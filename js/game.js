@@ -6,16 +6,19 @@ import { Drone } from './entities/drone.js';
 import { Item } from './entities/item.js';
 import { Mothership } from './entities/mothership.js';
 import { Planet } from './entities/planet.js';
+import { SpaceRenderer } from './render/space-renderer.js';
 import { UI } from './ui.js';
 import { Vector2, clamp, distance, pick, rand } from './utils.js';
 
 export class Game {
-  constructor(canvas) {
+  constructor(canvas, touchCanvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.touchCanvas = touchCanvas;
+    this.touchCtx = touchCanvas.getContext('2d');
     this.ui = new UI();
-    this.controls = new Controls(canvas);
+    this.controls = new Controls(touchCanvas);
     this.camera = new Camera();
+    this.renderer3d = new SpaceRenderer(canvas);
     this.state = 'start';
     this.lastTime = performance.now();
     this.time = 0;
@@ -48,12 +51,15 @@ export class Game {
     const dpr = window.devicePixelRatio || 1;
     this.viewportWidth = window.innerWidth;
     this.viewportHeight = window.innerHeight;
-    this.canvas.width = Math.round(this.viewportWidth * dpr);
-    this.canvas.height = Math.round(this.viewportHeight * dpr);
     this.canvas.style.width = `${this.viewportWidth}px`;
     this.canvas.style.height = `${this.viewportHeight}px`;
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.imageSmoothingEnabled = true;
+    this.touchCanvas.width = Math.round(this.viewportWidth * dpr);
+    this.touchCanvas.height = Math.round(this.viewportHeight * dpr);
+    this.touchCanvas.style.width = `${this.viewportWidth}px`;
+    this.touchCanvas.style.height = `${this.viewportHeight}px`;
+    this.touchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.touchCtx.imageSmoothingEnabled = true;
+    this.renderer3d.resize(this.viewportWidth, this.viewportHeight);
   }
 
   setupMatch() {
@@ -76,6 +82,16 @@ export class Game {
     for (const planet of this.planets) {
       planet.onDamaged = (damagedPlanet, team, info) => {
         if (info.willCapture) return;
+        const impactColor = team ? TEAM_COLORS[team].primary : TEAM_COLORS.neutral.primary;
+        const particleScale = clamp(0.95 + info.impactHeat * 0.16, 1.05, 2.1);
+        this.spawnBurst(damagedPlanet.pos.x, damagedPlanet.pos.y, impactColor, Math.round(12 + info.impactHeat * 3), particleScale);
+        this.spawnShockwave(
+          damagedPlanet.pos.x,
+          damagedPlanet.pos.y,
+          impactColor,
+          damagedPlanet.radius * clamp(0.18 + info.impactHeat * 0.035, 0.2, 0.42),
+          clamp(0.7 + info.impactHeat * 0.12, 0.8, 1.5),
+        );
         const strength = clamp((info.impactHeat - 1.6) * 0.85, 0.28, 3.2);
         const duration = clamp(2.2 + (info.impactHeat - 1) * 0.5, 2.2, 5.4);
         this.camera.shake(strength, duration);
@@ -100,6 +116,7 @@ export class Game {
     this.setupMatch();
     this.state = 'playing';
     this.ui.showPlaying();
+    this.touchCanvas.classList.remove('hidden');
   }
 
   restartMatch() {
@@ -165,6 +182,10 @@ export class Game {
         size: rand(1.5, 4.5) * scale,
         color,
         drag: rand(0.9, 0.95),
+        height: rand(8, 18) * scale,
+        rise: rand(0.35, 1.15) * scale,
+        wobble: rand(0, Math.PI * 2),
+        spin: rand(-0.08, 0.08),
       });
     }
   }
@@ -182,6 +203,8 @@ export class Game {
       color,
       growth: 5.5 * scale,
       lineWidth: 3.5 * scale,
+      height: 10 + radius * 0.06,
+      rise: 0.5 * scale,
     });
   }
 
@@ -196,6 +219,8 @@ export class Game {
       if (particle.type === 'ring') {
         particle.size += particle.growth * tick;
       }
+      particle.height = (particle.height || 0) + (particle.rise || 0) * tick;
+      particle.wobble = (particle.wobble || 0) + (particle.spin || 0) * tick;
       particle.life -= tick;
       return particle.life > 0;
     });
@@ -205,6 +230,7 @@ export class Game {
     this.ui.updateDualHold(delta, () => this.beginMatch());
     this.planets.forEach((planet) => planet.update(1));
     this.camera.update(this.blue, this.red, this.viewportWidth, this.viewportHeight, 1);
+    this.touchCanvas.classList.add('hidden');
   }
 
   fillDroneSpawns(team, ready, source) {
@@ -234,7 +260,7 @@ export class Game {
       }
 
       for (const planet of this.planets) {
-        if (planet.owner === drone.team) continue;
+        if (planet.owner === drone.team || planet.pendingOwner === drone.team || planet.rebuildTimer > 0) continue;
         if (!overlapsCircle(drone, planet, 2)) continue;
         drone.takeDamage(0.16 * tick);
         planet.takeDamage(0.22 * tick, drone.team);
@@ -376,85 +402,9 @@ export class Game {
     };
   }
 
-  renderBackground() {
-    const ctx = this.ctx;
-    ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
-
-    const sky = ctx.createLinearGradient(0, 0, 0, this.viewportHeight);
-    sky.addColorStop(0, '#05111d');
-    sky.addColorStop(1, '#091a2a');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
-
-    for (const star of this.stars) {
-      const x = (star.x - this.camera.position.x) * star.depth * this.camera.zoom + this.viewportWidth * 0.5;
-      const y = (star.y - this.camera.position.y) * star.depth * this.camera.zoom + this.viewportHeight * 0.5;
-      if (x < -10 || x > this.viewportWidth + 10 || y < -10 || y > this.viewportHeight + 10) continue;
-      ctx.fillStyle = `rgba(219, 240, 255, ${star.alpha})`;
-      ctx.beginPath();
-      ctx.arc(x, y, star.size * star.depth, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  renderWorld() {
-    const ctx = this.ctx;
-    this.camera.apply(ctx, { width: this.viewportWidth, height: this.viewportHeight });
-
-    const worldGradient = ctx.createLinearGradient(0, 0, WORLD.width, WORLD.height);
-    worldGradient.addColorStop(0, 'rgba(15, 32, 54, 0.45)');
-    worldGradient.addColorStop(1, 'rgba(5, 12, 24, 0.9)');
-    ctx.fillStyle = worldGradient;
-    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    ctx.strokeStyle = 'rgba(126, 184, 227, 0.08)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= WORLD.width; x += WORLD.grid) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, WORLD.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= WORLD.height; y += WORLD.grid) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WORLD.width, y);
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0, 0, WORLD.width, WORLD.height);
-
-    this.planets.forEach((planet) => planet.draw(ctx));
-    this.items.forEach((item) => item.draw(ctx));
-    this.drones.forEach((drone) => drone.draw(ctx));
-    this.blue.draw(ctx);
-    this.red.draw(ctx);
-
-    for (const particle of this.particles) {
-      const alpha = clamp(particle.life / (particle.maxLife || 42), 0, 1);
-      ctx.globalAlpha = alpha;
-      if (particle.type === 'ring') {
-        ctx.strokeStyle = particle.color;
-        ctx.lineWidth = particle.lineWidth;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = particle.color;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    this.camera.restore(ctx);
-  }
-
   renderTouchUi() {
-    const ctx = this.ctx;
+    const ctx = this.touchCtx;
+    ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
     ctx.save();
 
     for (const team of ['blue', 'red']) {
@@ -489,15 +439,20 @@ export class Game {
     } else if (this.state === 'victory') {
       this.updateParticles(tick);
       this.camera.update(this.blue, this.red, this.viewportWidth, this.viewportHeight, tick);
+      this.touchCanvas.classList.add('hidden');
     }
 
     this.ui.updateHUD(this.buildSnapshot());
   }
 
   render() {
-    this.renderBackground();
-    this.renderWorld();
-    if (this.state === 'playing') this.renderTouchUi();
+    this.renderer3d.render(this);
+    if (this.state === 'playing') {
+      this.touchCanvas.classList.remove('hidden');
+      this.renderTouchUi();
+    } else {
+      this.touchCtx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
+    }
   }
 
   frame = (now) => {

@@ -18,6 +18,7 @@ export class Mothership {
     this.auraRotationA = rand(0, Math.PI * 2);
     this.auraRotationB = rand(0, Math.PI * 2);
     this.angle = team === 'blue' ? 0 : Math.PI;
+    this.turnResponsiveness = 0.14;
     this.buffs = new Map();
     this.onDroneImpact = null;
   }
@@ -28,7 +29,10 @@ export class Mothership {
     if (input.length() > 0.01) {
       const thrust = input.clone().normalize().scale(this.acceleration * this.getShipSpeedMultiplier() * tick);
       this.vel.add(thrust);
-      this.angle = Math.atan2(input.y, input.x);
+      const targetAngle = Math.atan2(input.y, input.x);
+      const diff = Math.atan2(Math.sin(targetAngle - this.angle), Math.cos(targetAngle - this.angle));
+      const turnAlpha = 1 - Math.pow(1 - this.turnResponsiveness, tick);
+      this.angle += diff * turnAlpha;
     }
 
     this.vel.scale(Math.pow(this.friction, tick));

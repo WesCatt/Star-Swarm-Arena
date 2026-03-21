@@ -8,9 +8,9 @@ export const WORLD = {
 
 export const TEAM_COLORS = {
   blue: {
-    primary: '#4fd4ff',
-    secondary: '#128be6',
-    glow: 'rgba(79, 212, 255, 0.32)',
+    primary: '#1fb6ff',
+    secondary: '#005dff',
+    glow: 'rgba(31, 182, 255, 0.36)',
     text: 'Blue Fleet',
   },
   red: {

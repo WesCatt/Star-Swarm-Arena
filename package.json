@@ -1,5 +1,18 @@
 {
   "name": "star-swarm-arena",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "webpack --config webpack.config.cjs",
+    "build:prod": "webpack --mode production --config webpack.config.cjs",
+    "watch": "webpack --watch --config webpack.config.cjs"
+  },
+  "dependencies": {
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^14.0.0",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.2"
+  }
 }

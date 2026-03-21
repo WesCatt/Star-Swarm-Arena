@@ -4,6 +4,12 @@ const PLANET_IMAGE_URLS = {
   neutral: new URL('../assets/planets/planet-neutral.svg', import.meta.url).href,
 };
 
+export const MODEL_URLS = {
+  planet: new URL('../assets/models/stylized_planet.glb', import.meta.url).href,
+  ship: new URL('../assets/models/spaceship.glb', import.meta.url).href,
+  drone: new URL('../assets/models/drone.glb', import.meta.url).href,
+};
+
 const imageCache = new Map();
 
 function loadImage(url) {
