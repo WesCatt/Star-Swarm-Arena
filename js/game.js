@@ -26,6 +26,7 @@ export class Game {
     this.ui.bindCallbacks({
       onStart: () => this.beginMatch(),
       onRestart: () => this.restartMatch(),
+      onHome: () => this.returnToHome(),
     });
 
     this.resize();
@@ -41,6 +42,7 @@ export class Game {
       size: rand(1, 3.2),
       depth: rand(0.3, 1),
       alpha: rand(0.35, 0.95),
+      drift: rand(0.4, 1.3),
     }));
   }
 
@@ -104,6 +106,12 @@ export class Game {
 
   restartMatch() {
     this.beginMatch();
+  }
+
+  returnToHome() {
+    this.setupMatch();
+    this.state = 'start';
+    this.ui.showStart();
   }
 
   queueAutocapture(team, seconds) {
@@ -183,6 +191,53 @@ export class Game {
       growth: 5.5 * scale,
       lineWidth: 3.5 * scale,
     });
+  }
+
+  spawnShipTrail(ship, tick) {
+    const speed = ship.vel.length();
+    if (speed < 0.24) return;
+
+    const exhaustDirection = Vector2.fromAngle(ship.angle + Math.PI, 1);
+    const sideDirection = Vector2.fromAngle(ship.angle + Math.PI * 0.5, 1);
+    const boostIntensity = ship.boostBlend ?? 0;
+    const intensity = clamp(speed / (ship.maxSpeed * ship.getShipSpeedMultiplier()), 0.28, 1) * (1 + boostIntensity * 0.55);
+    const burstCount = Math.max(1, Math.round((1.6 + intensity * 2.6 + boostIntensity * 3.4) * tick));
+
+    for (let i = 0; i < burstCount; i += 1) {
+      const sideOffset = rand(-ship.radius * (0.22 + boostIntensity * 0.12), ship.radius * (0.22 + boostIntensity * 0.12));
+      const spawnX = ship.pos.x + exhaustDirection.x * (ship.radius - 4) + sideDirection.x * sideOffset;
+      const spawnY = ship.pos.y + exhaustDirection.y * (ship.radius - 4) + sideDirection.y * sideOffset;
+      const drift = rand(-0.55, 0.55);
+
+      this.particles.push({
+        type: 'spark',
+        x: spawnX,
+        y: spawnY,
+        vx: exhaustDirection.x * rand(1.8, 3.8 + boostIntensity * 1.8) - ship.vel.x * rand(0.18, 0.38) + sideDirection.x * drift,
+        vy: exhaustDirection.y * rand(1.8, 3.8 + boostIntensity * 1.8) - ship.vel.y * rand(0.18, 0.38) + sideDirection.y * drift,
+        life: rand(12, 22 + boostIntensity * 7),
+        maxLife: 24,
+        size: rand(2.1, 4.8) * (0.88 + intensity * 0.92 + boostIntensity * 0.5),
+        color: i % 3 === 0 ? 'rgba(255, 248, 230, 0.98)' : i % 2 === 0 ? 'rgba(255, 177, 112, 0.92)' : ship.color.primary,
+        drag: rand(0.88, 0.94),
+      });
+    }
+
+    if (speed > ship.maxSpeed * 0.62 || boostIntensity > 0.35) {
+      const slipSide = Math.sign(ship.vel.x * sideDirection.x + ship.vel.y * sideDirection.y) || 1;
+      this.particles.push({
+        type: 'spark',
+        x: ship.pos.x - exhaustDirection.x * (ship.radius * 0.3) + sideDirection.x * ship.radius * slipSide * 0.85,
+        y: ship.pos.y - exhaustDirection.y * (ship.radius * 0.3) + sideDirection.y * ship.radius * slipSide * 0.85,
+        vx: -ship.vel.x * rand(0.16, 0.28) + sideDirection.x * slipSide * rand(0.6, 1.2 + boostIntensity * 0.6),
+        vy: -ship.vel.y * rand(0.16, 0.28) + sideDirection.y * slipSide * rand(0.6, 1.2 + boostIntensity * 0.6),
+        life: rand(10, 18),
+        maxLife: 18,
+        size: rand(1.8, 3.6),
+        color: boostIntensity > 0.25 ? 'rgba(123, 223, 255, 0.88)' : 'rgba(255, 255, 255, 0.8)',
+        drag: rand(0.86, 0.92),
+      });
+    }
   }
 
   updateParticles(tick) {
@@ -300,11 +355,15 @@ export class Game {
   updatePlaying(tick) {
     const blueInput = this.controls.getMoveVector('blue');
     const redInput = this.controls.getMoveVector('red');
+    const blueBoost = this.controls.getBoostHeld('blue');
+    const redBoost = this.controls.getBoostHeld('red');
     this.blue.onDroneImpact = (drone, target) => this.shatterDrone(drone, target);
     this.red.onDroneImpact = (drone, target) => this.shatterDrone(drone, target);
 
-    const blueReady = this.blue.update(blueInput, tick, WORLD);
-    const redReady = this.red.update(redInput, tick, WORLD);
+    const blueReady = this.blue.update(blueInput, blueBoost, tick, WORLD);
+    const redReady = this.red.update(redInput, redBoost, tick, WORLD);
+    this.spawnShipTrail(this.blue, tick);
+    this.spawnShipTrail(this.red, tick);
     this.fillDroneSpawns('blue', blueReady, this.blue);
     this.fillDroneSpawns('red', redReady, this.red);
 
@@ -371,8 +430,9 @@ export class Game {
         planets: this.getPlanetCount('red'),
         buffs: this.red.getActiveBuffs(),
       },
-      stateLabel: this.state === 'playing' ? 'Battle Live' : this.state === 'victory' ? 'Awaiting Restart' : 'Stand By',
-      tip: `${this.planets.filter((planet) => !planet.owner).length} neutral planets remain. Item cap: ${BALANCE.item.maxActive}.`,
+      stateKey: this.state === 'playing' ? 'battleLive' : this.state === 'victory' ? 'awaitingRestart' : 'standBy',
+      neutralPlanets: this.planets.filter((planet) => !planet.owner).length,
+      itemCap: BALANCE.item.maxActive,
     };
   }
 
@@ -380,19 +440,63 @@ export class Game {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.viewportWidth, this.viewportHeight);
 
-    const sky = ctx.createLinearGradient(0, 0, 0, this.viewportHeight);
-    sky.addColorStop(0, '#05111d');
-    sky.addColorStop(1, '#091a2a');
+    const sky = ctx.createLinearGradient(0, 0, this.viewportWidth, this.viewportHeight);
+    sky.addColorStop(0, '#010204');
+    sky.addColorStop(0.52, '#07111a');
+    sky.addColorStop(1, '#04070d');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
 
-    for (const star of this.stars) {
-      const x = (star.x - this.camera.position.x) * star.depth * this.camera.zoom + this.viewportWidth * 0.5;
-      const y = (star.y - this.camera.position.y) * star.depth * this.camera.zoom + this.viewportHeight * 0.5;
-      if (x < -10 || x > this.viewportWidth + 10 || y < -10 || y > this.viewportHeight + 10) continue;
-      ctx.fillStyle = `rgba(219, 240, 255, ${star.alpha})`;
+    const blueGlow = this.camera.worldToScreen(this.blue.pos.x, this.blue.pos.y, { width: this.viewportWidth, height: this.viewportHeight });
+    const redGlow = this.camera.worldToScreen(this.red.pos.x, this.red.pos.y, { width: this.viewportWidth, height: this.viewportHeight });
+
+    const blueBloom = ctx.createRadialGradient(blueGlow.x, blueGlow.y, 0, blueGlow.x, blueGlow.y, this.viewportWidth * 0.24);
+    blueBloom.addColorStop(0, 'rgba(79, 212, 255, 0.18)');
+    blueBloom.addColorStop(1, 'rgba(79, 212, 255, 0)');
+    ctx.fillStyle = blueBloom;
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+
+    const redBloom = ctx.createRadialGradient(redGlow.x, redGlow.y, 0, redGlow.x, redGlow.y, this.viewportWidth * 0.24);
+    redBloom.addColorStop(0, 'rgba(255, 138, 122, 0.18)');
+    redBloom.addColorStop(1, 'rgba(255, 138, 122, 0)');
+    ctx.fillStyle = redBloom;
+    ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1.2;
+    for (let i = -2; i < 7; i += 1) {
+      const offset = ((this.time * 0.03) + i * 180) % (this.viewportWidth + 220) - 110;
       ctx.beginPath();
-      ctx.arc(x, y, star.size * star.depth, 0, Math.PI * 2);
+      ctx.moveTo(offset, -40);
+      ctx.lineTo(offset + this.viewportWidth * 0.38, this.viewportHeight + 40);
+      ctx.stroke();
+    }
+
+    const averageVelocity = this.blue.vel.clone().add(this.red.vel).scale(0.5);
+    const starBoost = Math.min(1, (this.blue.vel.length() + this.red.vel.length()) / 5.5);
+    const starDriftX = averageVelocity.x * (12 + starBoost * 22);
+    const starDriftY = averageVelocity.y * (12 + starBoost * 22);
+
+    for (const star of this.stars) {
+      const x = (star.x - this.camera.position.x) * star.depth * this.camera.zoom + this.viewportWidth * 0.5 - starDriftX * star.depth * star.drift;
+      const y = (star.y - this.camera.position.y) * star.depth * this.camera.zoom + this.viewportHeight * 0.5 - starDriftY * star.depth * star.drift;
+      if (x < -10 || x > this.viewportWidth + 10 || y < -10 || y > this.viewportHeight + 10) continue;
+      const streakLength = starBoost * (6 + star.depth * 14) * star.drift;
+      const streakX = averageVelocity.x * streakLength * 0.14;
+      const streakY = averageVelocity.y * streakLength * 0.14;
+
+      if (starBoost > 0.08) {
+        ctx.strokeStyle = `rgba(219, 240, 255, ${star.alpha * 0.55})`;
+        ctx.lineWidth = Math.max(1, star.size * star.depth * 0.9);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - streakX, y - streakY);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = `rgba(219, 240, 255, ${Math.min(1, star.alpha + starBoost * 0.15)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, star.size * star.depth * (1 + starBoost * 0.18), 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -402,12 +506,25 @@ export class Game {
     this.camera.apply(ctx, { width: this.viewportWidth, height: this.viewportHeight });
 
     const worldGradient = ctx.createLinearGradient(0, 0, WORLD.width, WORLD.height);
-    worldGradient.addColorStop(0, 'rgba(15, 32, 54, 0.45)');
-    worldGradient.addColorStop(1, 'rgba(5, 12, 24, 0.9)');
+    worldGradient.addColorStop(0, 'rgba(5, 12, 20, 0.82)');
+    worldGradient.addColorStop(0.45, 'rgba(8, 18, 28, 0.72)');
+    worldGradient.addColorStop(1, 'rgba(4, 8, 14, 0.92)');
     ctx.fillStyle = worldGradient;
     ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
-    ctx.strokeStyle = 'rgba(126, 184, 227, 0.08)';
+    const blueField = ctx.createRadialGradient(this.blue.pos.x, this.blue.pos.y, 0, this.blue.pos.x, this.blue.pos.y, 360);
+    blueField.addColorStop(0, 'rgba(79, 212, 255, 0.08)');
+    blueField.addColorStop(1, 'rgba(79, 212, 255, 0)');
+    ctx.fillStyle = blueField;
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    const redField = ctx.createRadialGradient(this.red.pos.x, this.red.pos.y, 0, this.red.pos.x, this.red.pos.y, 360);
+    redField.addColorStop(0, 'rgba(255, 138, 122, 0.08)');
+    redField.addColorStop(1, 'rgba(255, 138, 122, 0)');
+    ctx.fillStyle = redField;
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    ctx.strokeStyle = 'rgba(126, 184, 227, 0.05)';
     ctx.lineWidth = 1;
     for (let x = 0; x <= WORLD.width; x += WORLD.grid) {
       ctx.beginPath();
@@ -422,7 +539,19 @@ export class Game {
       ctx.stroke();
     }
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+    ctx.lineWidth = 2;
+    for (let i = -4; i <= 8; i += 1) {
+      const offset = (this.time * 0.9 + i * 260) % (WORLD.width + WORLD.height * 0.25);
+      ctx.beginPath();
+      ctx.moveTo(offset - WORLD.height * 0.2, 0);
+      ctx.lineTo(offset + WORLD.height * 0.8, WORLD.height);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, WORLD.width, WORLD.height);
 

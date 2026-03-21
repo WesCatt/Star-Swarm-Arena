@@ -24,6 +24,9 @@ export class Planet {
     this.pendingOwner = null;
     this.rebuildTimer = 0;
     this.rebuildDuration = 68;
+    this.revealTimer = 0;
+    this.revealDuration = 18;
+    this.texturePhase = 'base';
     this.fragments = Array.from({ length: 28 }, (_, index) => ({
       angle: (Math.PI * 2 * index) / 28 + rand(-0.22, 0.22),
       orbit: rand(this.radius * 1.35, this.radius * 2.35),
@@ -48,6 +51,10 @@ export class Planet {
         this.completeCapture();
       }
       return 0;
+    }
+
+    if (this.revealTimer > 0) {
+      this.revealTimer = Math.max(0, this.revealTimer - tick);
     }
 
     if (this.recoverCooldown <= 0) {
@@ -89,6 +96,7 @@ export class Planet {
     this.health = 0;
     this.spawnAccumulator = 0;
     this.rebuildTimer = this.rebuildDuration;
+    this.revealTimer = 0;
     this.onShattered?.(this, team, previousOwner);
   }
 
@@ -97,6 +105,8 @@ export class Planet {
     const previousOwner = this.owner;
     this.pendingOwner = null;
     this.owner = team;
+    this.texturePhase = team === 'blue' ? 'rebuiltBlue' : team === 'red' ? 'rebuiltRed' : 'base';
+    this.revealTimer = this.revealDuration;
     this.health = this.maxHealth * BALANCE.planet.captureRestore;
     this.spawnAccumulator = 120;
     this.onCaptured?.(this, team, previousOwner);
@@ -124,10 +134,14 @@ export class Planet {
     return 1 - this.rebuildTimer / this.rebuildDuration;
   }
 
+  getRevealProgress() {
+    if (this.revealTimer <= 0) return 1;
+    return 1 - this.revealTimer / this.revealDuration;
+  }
+
   draw(ctx) {
     const palette = this.getDisplayPalette();
-    const textureKey = this.pendingOwner || this.owner || 'neutral';
-    const texture = getPlanetTexture(textureKey);
+    const texture = getPlanetTexture(this.texturePhase);
     const glowRadius = this.radius + 20 + Math.sin(this.pulse) * 4;
     const ringRadiusX = this.radius + 22;
     const ringTiltWave = 0.2 + Math.abs(Math.sin(this.ringTiltPhase)) * 0.34;
@@ -138,6 +152,7 @@ export class Planet {
     const ringCore = `${palette.primary}dd`;
     const ringEdge = `${palette.secondary}7a`;
     const rebuildProgress = this.getRebuildProgress();
+    const revealProgress = this.getRevealProgress();
     const isRebuilding = this.rebuildTimer > 0;
 
     ctx.save();
@@ -240,12 +255,43 @@ export class Planet {
       ctx.globalAlpha = 1;
     } else {
       if (texture) {
+        const revealScale = 0.92 + revealProgress * 0.08;
+
         ctx.save();
+        ctx.globalAlpha = revealProgress;
+        ctx.scale(revealScale, revealScale);
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
         ctx.clip();
         ctx.drawImage(texture, -this.radius, -this.radius, this.radius * 2, this.radius * 2);
+
+        // Keep the new planet art, but lightly tint it so team ownership still reads quickly.
+        const tintGradient = ctx.createLinearGradient(-this.radius, -this.radius, this.radius, this.radius);
+        tintGradient.addColorStop(0, `${palette.primary}18`);
+        tintGradient.addColorStop(0.55, 'rgba(255, 255, 255, 0.04)');
+        tintGradient.addColorStop(1, `${palette.secondary}3a`);
+        ctx.fillStyle = tintGradient;
+        ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+
+        const shadowGradient = ctx.createRadialGradient(this.radius * 0.15, this.radius * 0.2, this.radius * 0.1, 0, 0, this.radius * 1.15);
+        shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        shadowGradient.addColorStop(1, 'rgba(3, 10, 20, 0.26)');
+        ctx.fillStyle = shadowGradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
+
+        if (revealProgress < 1) {
+          ctx.save();
+          ctx.globalAlpha = (1 - revealProgress) * 0.35;
+          ctx.strokeStyle = palette.primary;
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(0, 0, this.radius * (0.88 + revealProgress * 0.2), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       } else {
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);

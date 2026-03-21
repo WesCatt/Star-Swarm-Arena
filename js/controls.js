@@ -4,6 +4,11 @@ export class Controls {
   constructor(canvas) {
     this.canvas = canvas;
     this.keys = new Set();
+    this.codes = new Set();
+    this.touchBoost = {
+      blue: false,
+      red: false,
+    };
     this.touchState = {
       blue: this.createTouchSlot(),
       red: this.createTouchSlot(),
@@ -26,16 +31,42 @@ export class Controls {
   bind() {
     window.addEventListener('keydown', (event) => {
       this.keys.add(event.key.toLowerCase());
+      this.codes.add(event.code);
     });
 
     window.addEventListener('keyup', (event) => {
       this.keys.delete(event.key.toLowerCase());
+      this.codes.delete(event.code);
     });
 
     this.canvas.addEventListener('touchstart', (event) => this.handleTouchStart(event), { passive: false });
     this.canvas.addEventListener('touchmove', (event) => this.handleTouchMove(event), { passive: false });
     this.canvas.addEventListener('touchend', (event) => this.handleTouchEnd(event), { passive: false });
     this.canvas.addEventListener('touchcancel', (event) => this.handleTouchEnd(event), { passive: false });
+
+    this.bindBoostButton('blue', document.getElementById('blue-boost-button'));
+    this.bindBoostButton('red', document.getElementById('red-boost-button'));
+  }
+
+  bindBoostButton(team, element) {
+    if (!element) {
+      return;
+    }
+
+    const activate = (event) => {
+      event.preventDefault();
+      this.touchBoost[team] = true;
+    };
+
+    const deactivate = (event) => {
+      event.preventDefault();
+      this.touchBoost[team] = false;
+    };
+
+    element.addEventListener('pointerdown', activate);
+    element.addEventListener('pointerup', deactivate);
+    element.addEventListener('pointerleave', deactivate);
+    element.addEventListener('pointercancel', deactivate);
   }
 
   handleTouchStart(event) {
@@ -138,8 +169,18 @@ export class Controls {
     };
   }
 
+  getBoostHeld(team) {
+    if (team === 'blue') {
+      return this.codes.has('Space') || this.touchBoost.blue;
+    }
+    return this.codes.has('NumpadEnter') || this.touchBoost.red;
+  }
+
   reset() {
     this.keys.clear();
+    this.codes.clear();
+    this.touchBoost.blue = false;
+    this.touchBoost.red = false;
     this.touchState.blue = this.createTouchSlot();
     this.touchState.red = this.createTouchSlot();
   }

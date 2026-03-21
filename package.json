@@ -1,5 +1,15 @@
 {
   "name": "star-swarm-arena",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "webpack --config webpack.config.cjs",
+    "serve": "webpack serve --config webpack.config.cjs --host 0.0.0.0 --port 8080",
+    "dev": "npm run serve"
+  },
+  "devDependencies": {
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.2",
+    "webpack-dev-server": "^5.2.3"
+  }
 }
