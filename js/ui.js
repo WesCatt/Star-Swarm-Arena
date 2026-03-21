@@ -1,4 +1,5 @@
 import { ITEM_TYPES, TEAM_COLORS } from './config.js';
+import { getItemIconMarkup } from './item-icons.js';
 import { padTime } from './utils.js';
 
 export class UI {
@@ -41,7 +42,9 @@ export class UI {
   populateLegend() {
     this.legend.innerHTML = ITEM_TYPES.map((item) => `
       <article class="legend-item">
-        <div class="legend-icon" style="background:${item.accent}">${item.icon}</div>
+        <div class="legend-icon" style="--icon-accent:${item.accent}">
+          ${getItemIconMarkup(item)}
+        </div>
         <div class="legend-name">${item.name}</div>
         <div class="legend-desc">${item.description}</div>
       </article>

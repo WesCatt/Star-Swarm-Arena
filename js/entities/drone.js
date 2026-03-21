@@ -15,6 +15,7 @@ export class Drone {
     this.attackCooldown = rand(0, BALANCE.drone.attackCooldown);
     this.heading = rand(0, Math.PI * 2);
     this.orbitSeed = rand(0, Math.PI * 2);
+    this.destroyedByImpact = false;
   }
 
   calculateForces(allies, enemies, mothership, enemyMothership, planets, world, time) {
@@ -112,10 +113,10 @@ export class Drone {
       .limit(maxSpeed);
 
     this.update(tick);
-    this.tryAttack(forces.target, modifiers);
+    this.tryAttack(forces.target, modifiers, mothership);
   }
 
-  tryAttack(target, modifiers) {
+  tryAttack(target, modifiers, mothership) {
     this.attackCooldown = Math.max(0, this.attackCooldown - 1);
     if (!target || this.attackCooldown > 0) return;
 
@@ -124,20 +125,22 @@ export class Drone {
 
     this.attackCooldown = BALANCE.drone.attackCooldown;
     const damageScale = modifiers.damage;
+    const impactEffect = mothership?.onDroneImpact;
 
     if (target.kind === 'mothership') {
       target.takeDamage(BALANCE.drone.shipDamage * damageScale);
-      this.takeDamage(1.5);
+      impactEffect?.(this, target);
       return;
     }
 
     if (target.kind === 'planet') {
       target.takeDamage(BALANCE.drone.planetDamage * damageScale, this.team);
-      this.takeDamage(0.7);
+      impactEffect?.(this, target);
       return;
     }
 
     target.takeDamage(BALANCE.drone.attackDamage * damageScale);
+    impactEffect?.(this, target);
   }
 
   update(tick) {

@@ -19,6 +19,7 @@ export class Mothership {
     this.auraRotationB = rand(0, Math.PI * 2);
     this.angle = team === 'blue' ? 0 : Math.PI;
     this.buffs = new Map();
+    this.onDroneImpact = null;
   }
 
   update(input, tick, world) {

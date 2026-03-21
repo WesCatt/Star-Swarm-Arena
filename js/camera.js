@@ -9,6 +9,9 @@ export class Camera {
     this.maxZoom = 1.2;
     this.zoomSmooth = 0.05;
     this.posSmooth = 0.1;
+    this.shakeTime = 0;
+    this.shakeStrength = 0;
+    this.shakeOffset = new Vector2();
   }
 
   update(p1, p2, viewportWidth, viewportHeight, tick = 1) {
@@ -31,13 +34,21 @@ export class Camera {
 
     this.position.x = clamp(this.position.x, halfWidth, WORLD.width - halfWidth);
     this.position.y = clamp(this.position.y, halfHeight, WORLD.height - halfHeight);
+
+    if (this.shakeTime > 0) {
+      this.shakeTime = Math.max(0, this.shakeTime - tick);
+      const intensity = this.shakeStrength * (this.shakeTime / Math.max(this.shakeTime + tick, 0.001));
+      this.shakeOffset.set((Math.random() * 2 - 1) * intensity, (Math.random() * 2 - 1) * intensity);
+    } else {
+      this.shakeOffset.set(0, 0);
+    }
   }
 
   apply(ctx, canvas) {
     ctx.save();
     ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
     ctx.scale(this.zoom, this.zoom);
-    ctx.translate(-this.position.x, -this.position.y);
+    ctx.translate(-this.position.x + this.shakeOffset.x, -this.position.y + this.shakeOffset.y);
   }
 
   restore(ctx) {
@@ -56,5 +67,10 @@ export class Camera {
       x: (x - canvas.width * 0.5) / this.zoom + this.position.x,
       y: (y - canvas.height * 0.5) / this.zoom + this.position.y,
     };
+  }
+
+  shake(strength = 10, duration = 10) {
+    this.shakeStrength = Math.max(this.shakeStrength, strength);
+    this.shakeTime = Math.max(this.shakeTime, duration);
   }
 }

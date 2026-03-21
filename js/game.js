@@ -73,6 +73,24 @@ export class Game {
       this.planets.push(new Planet(pos.x, pos.y));
     }
 
+    for (const planet of this.planets) {
+      planet.onDamaged = (damagedPlanet, team, info) => {
+        if (info.willCapture) return;
+        const strength = clamp((info.impactHeat - 1.6) * 0.85, 0.28, 3.2);
+        const duration = clamp(2.2 + (info.impactHeat - 1) * 0.5, 2.2, 5.4);
+        this.camera.shake(strength, duration);
+      };
+      planet.onShattered = (capturedPlanet, team) => {
+        this.spawnBurst(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, 42, 3.2);
+        this.spawnShockwave(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, capturedPlanet.radius * 0.55, 2);
+        this.camera.shake(30, 15);
+      };
+      planet.onCaptured = (capturedPlanet, team) => {
+        this.spawnBurst(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, 18, 1.35);
+        this.spawnShockwave(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, capturedPlanet.radius * 0.28, 0.9);
+      };
+    }
+
     this.camera.position.set(WORLD.width * 0.5, WORLD.height * 0.5);
     this.camera.zoom = 0.9;
     this.controls.reset();
@@ -103,7 +121,7 @@ export class Game {
     const candidates = this.planets.filter((planet) => planet.owner !== team);
     if (!candidates.length) return;
     candidates.sort((a, b) => distance(a.pos, mothership.pos) - distance(b.pos, mothership.pos));
-    candidates[0].onDeath(team);
+    candidates[0].shatter(team);
     this.spawnBurst(candidates[0].pos.x, candidates[0].pos.y, TEAM_COLORS[team].primary, 20);
   }
 
@@ -137,21 +155,47 @@ export class Game {
   spawnBurst(x, y, color, count, scale = 1) {
     for (let i = 0; i < count; i += 1) {
       this.particles.push({
+        type: 'spark',
         x,
         y,
         vx: Math.cos((Math.PI * 2 * i) / count + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale,
         vy: Math.sin((Math.PI * 2 * i) / count + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale,
         life: rand(18, 42),
+        maxLife: 42,
         size: rand(1.5, 4.5) * scale,
         color,
+        drag: rand(0.9, 0.95),
       });
     }
   }
 
+  spawnShockwave(x, y, color, radius = 14, scale = 1) {
+    this.particles.push({
+      type: 'ring',
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      life: 20 * scale,
+      maxLife: 20 * scale,
+      size: radius,
+      color,
+      growth: 5.5 * scale,
+      lineWidth: 3.5 * scale,
+    });
+  }
+
   updateParticles(tick) {
     this.particles = this.particles.filter((particle) => {
-      particle.x += particle.vx * tick;
-      particle.y += particle.vy * tick;
+      particle.x += (particle.vx || 0) * tick;
+      particle.y += (particle.vy || 0) * tick;
+      if (particle.drag) {
+        particle.vx *= Math.pow(particle.drag, tick);
+        particle.vy *= Math.pow(particle.drag, tick);
+      }
+      if (particle.type === 'ring') {
+        particle.size += particle.growth * tick;
+      }
       particle.life -= tick;
       return particle.life > 0;
     });
@@ -208,6 +252,28 @@ export class Game {
     });
   }
 
+  shatterDrone(drone, target = null) {
+    if (!drone || drone.health <= 0) return;
+
+    drone.destroyedByImpact = true;
+    drone.health = 0;
+    this.spawnBurst(drone.pos.x, drone.pos.y, TEAM_COLORS[drone.team].primary, 24, 2.1);
+    this.spawnShockwave(drone.pos.x, drone.pos.y, TEAM_COLORS[drone.team].primary, 10, 0.9);
+
+    if (!target?.pos) return;
+
+    const impactColor = target.team ? TEAM_COLORS[target.team].primary : target.owner ? TEAM_COLORS[target.owner].primary : TEAM_COLORS.neutral.primary;
+    if (target.kind === 'planet') {
+      this.spawnBurst(target.pos.x, target.pos.y, impactColor, 34, 2.7);
+      this.spawnShockwave(target.pos.x, target.pos.y, impactColor, target.radius * 0.35, 1.5);
+    } else if (target.kind === 'mothership') {
+      this.spawnBurst(target.pos.x, target.pos.y, impactColor, 22, 1.8);
+      this.spawnShockwave(target.pos.x, target.pos.y, impactColor, target.radius * 0.3, 1.1);
+    } else {
+      this.spawnBurst(target.pos.x, target.pos.y, impactColor, 16, 1.2);
+    }
+  }
+
   handleDelayedEffects(tick) {
     this.delayedEffects = this.delayedEffects.filter((effect) => {
       effect.remaining -= tick;
@@ -224,7 +290,9 @@ export class Game {
         alive.push(drone);
         continue;
       }
-      this.spawnBurst(drone.pos.x, drone.pos.y, TEAM_COLORS[drone.team].primary, 8);
+      if (!drone.destroyedByImpact) {
+        this.spawnBurst(drone.pos.x, drone.pos.y, TEAM_COLORS[drone.team].primary, 8);
+      }
     }
     this.drones = alive;
   }
@@ -232,6 +300,8 @@ export class Game {
   updatePlaying(tick) {
     const blueInput = this.controls.getMoveVector('blue');
     const redInput = this.controls.getMoveVector('red');
+    this.blue.onDroneImpact = (drone, target) => this.shatterDrone(drone, target);
+    this.red.onDroneImpact = (drone, target) => this.shatterDrone(drone, target);
 
     const blueReady = this.blue.update(blueInput, tick, WORLD);
     const redReady = this.red.update(redInput, tick, WORLD);
@@ -363,11 +433,20 @@ export class Game {
     this.red.draw(ctx);
 
     for (const particle of this.particles) {
-      ctx.fillStyle = particle.color;
-      ctx.globalAlpha = clamp(particle.life / 42, 0, 1);
-      ctx.beginPath();
-      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-      ctx.fill();
+      const alpha = clamp(particle.life / (particle.maxLife || 42), 0, 1);
+      ctx.globalAlpha = alpha;
+      if (particle.type === 'ring') {
+        ctx.strokeStyle = particle.color;
+        ctx.lineWidth = particle.lineWidth;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
     }
 

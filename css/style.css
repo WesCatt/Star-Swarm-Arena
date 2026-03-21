@@ -118,9 +118,10 @@ body {
   position: absolute;
   inset: 0 0 auto;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.7fr) minmax(220px, 1fr);
-  gap: 10px;
-  padding: 10px 12px;
+  grid-template-columns: minmax(200px, 260px) minmax(220px, 360px) minmax(200px, 260px);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
   align-items: start;
 }
 
@@ -151,14 +152,14 @@ body {
 
 .hud-panel,
 .hud-center {
-  border-radius: 14px;
-  padding: 8px 10px;
+  border-radius: 12px;
+  padding: 7px 9px;
   backdrop-filter: blur(10px) saturate(1.06);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 30%),
-    linear-gradient(180deg, rgba(8, 13, 21, 0.48), rgba(6, 9, 14, 0.58));
+    linear-gradient(180deg, rgba(8, 13, 21, 0.4), rgba(6, 9, 14, 0.52));
   border-color: rgba(220, 234, 255, 0.1);
-  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.24);
 }
 
 .hud-panel.blue {
@@ -173,16 +174,16 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
 }
 
 .hud-badge {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  font: 700 0.68rem/1 "Trebuchet MS", sans-serif;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  font: 700 0.62rem/1 "Trebuchet MS", sans-serif;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   border: 1px solid var(--line-strong);
@@ -205,14 +206,14 @@ body {
 }
 
 .hud-name {
-  font: 700 0.78rem/1.05 "Trebuchet MS", sans-serif;
+  font: 700 0.72rem/1.05 "Trebuchet MS", sans-serif;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .hud-subname {
   color: var(--muted);
-  font: 0.64rem/1.1 "Trebuchet MS", sans-serif;
+  font: 0.58rem/1.1 "Trebuchet MS", sans-serif;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   opacity: 0.78;
@@ -227,7 +228,7 @@ body {
 
 .hud-bar {
   position: relative;
-  height: 8px;
+  height: 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
@@ -260,8 +261,8 @@ body {
 .hud-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
+  gap: 5px;
+  margin-top: 6px;
 }
 
 .hud-stats span,
@@ -269,21 +270,21 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.03);
   color: var(--muted-strong);
-  font: 0.68rem/1.2 "Trebuchet MS", sans-serif;
+  font: 0.62rem/1.2 "Trebuchet MS", sans-serif;
   letter-spacing: 0.02em;
 }
 
 .buff-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-  max-height: 24px;
+  gap: 5px;
+  margin-top: 6px;
+  max-height: 22px;
   overflow: hidden;
 }
 
@@ -297,16 +298,19 @@ body {
   place-items: center;
   text-align: center;
   align-self: start;
+  justify-self: center;
+  width: min(100%, 320px);
+  padding-inline: 12px;
 }
 
 .hud-center-shell {
-  max-width: 22rem;
+  max-width: 28rem;
 }
 
 .eyebrow {
   margin: 0;
   color: var(--gold);
-  font: 700 0.72rem/1.2 "Trebuchet MS", sans-serif;
+  font: 700 0.62rem/1.2 "Trebuchet MS", sans-serif;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
@@ -323,18 +327,18 @@ body {
 }
 
 #hud-state {
-  margin-top: 4px;
-  font: 700 0.76rem/1.1 "Trebuchet MS", sans-serif;
+  margin-top: 3px;
+  font: 700 0.7rem/1.1 "Trebuchet MS", sans-serif;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 #hud-tip {
-  margin-top: 4px;
-  font-size: 0.7rem;
-  line-height: 1.35;
-  opacity: 0.82;
-  max-width: 34ch;
+  margin-top: 2px;
+  font-size: 0.64rem;
+  line-height: 1.25;
+  opacity: 0.74;
+  max-width: 30ch;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -522,11 +526,26 @@ body {
   display: grid;
   place-items: center;
   border-radius: 16px;
-  font: 700 1rem/1 "Trebuchet MS", sans-serif;
-  letter-spacing: 0.04em;
-  color: #031018;
   margin-bottom: 14px;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.3), transparent 35%),
+    var(--icon-accent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 14px 28px rgba(0, 0, 0, 0.18);
+}
+
+.legend-icon svg {
+  width: 30px;
+  height: 30px;
+  stroke: #031018;
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.legend-icon .icon-solid {
+  fill: #031018;
+  stroke: none;
 }
 
 .legend-name {

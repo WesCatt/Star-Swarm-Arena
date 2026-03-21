@@ -64,13 +64,13 @@ export const BALANCE = {
 };
 
 export const ITEM_TYPES = [
-  { id: 'ship-speed', icon: 'SPD', name: 'Ship Speed', description: 'Mothership speed +50% for 3 seconds.', duration: 3, accent: '#75f2ff' },
-  { id: 'production', icon: 'PRD', name: 'Production', description: 'Drone output doubles for 3 seconds.', duration: 3, accent: '#ffd95a' },
-  { id: 'drone-size', icon: 'BIG', name: 'Drone Size', description: 'Drone body size +80% for 3 seconds.', duration: 3, accent: '#ffb05c' },
-  { id: 'drone-speed', icon: 'VLT', name: 'Drone Speed', description: 'Drone speed +50% for 3 seconds.', duration: 3, accent: '#7cffd8' },
-  { id: 'drone-attack', icon: 'ATK', name: 'Attack x2', description: 'Drone damage doubles for 3 seconds.', duration: 3, accent: '#ff8a7a' },
-  { id: 'neutralize', icon: 'NTR', name: 'Neutralize', description: 'One enemy planet is reset to neutral instantly.', duration: 0, accent: '#c8d1ff' },
-  { id: 'autocapture', icon: 'CAP', name: 'Auto Capture', description: 'Claims the nearest planet after 3 seconds.', duration: 3, accent: '#b2ff8e' },
+  { id: 'ship-speed', icon: 'thruster', name: 'Ship Speed', description: 'Mothership speed +50% for 3 seconds.', duration: 3, accent: '#75f2ff' },
+  { id: 'production', icon: 'factory', name: 'Production', description: 'Drone output doubles for 3 seconds.', duration: 3, accent: '#ffd95a' },
+  { id: 'drone-size', icon: 'expand', name: 'Drone Size', description: 'Drone body size +80% for 3 seconds.', duration: 3, accent: '#ffb05c' },
+  { id: 'drone-speed', icon: 'bolt', name: 'Drone Speed', description: 'Drone speed +50% for 3 seconds.', duration: 3, accent: '#7cffd8' },
+  { id: 'drone-attack', icon: 'crosshair', name: 'Attack x2', description: 'Drone damage doubles for 3 seconds.', duration: 3, accent: '#ff8a7a' },
+  { id: 'neutralize', icon: 'eclipse', name: 'Neutralize', description: 'One enemy planet is reset to neutral instantly.', duration: 0, accent: '#c8d1ff' },
+  { id: 'autocapture', icon: 'flag', name: 'Auto Capture', description: 'Claims the nearest planet after 3 seconds.', duration: 3, accent: '#b2ff8e' },
 ];
 
 export const BUFF_LABELS = {

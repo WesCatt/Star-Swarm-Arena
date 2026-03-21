@@ -1,4 +1,5 @@
 import { BALANCE, ITEM_TYPES } from '../config.js';
+import { drawItemIcon } from '../item-icons.js';
 import { Vector2, pick, rand } from '../utils.js';
 
 export class Item {
@@ -61,11 +62,7 @@ export class Item {
     ctx.roundRect(-size, -size, size * 2, size * 2, 10);
     ctx.fill();
 
-    ctx.fillStyle = '#07121b';
-    ctx.font = 'bold 18px "Trebuchet MS"';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.type.icon, 0, 1);
+    drawItemIcon(ctx, this.type, size * 1.1);
     ctx.restore();
   }
 }
