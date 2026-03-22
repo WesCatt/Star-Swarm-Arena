@@ -54,28 +54,32 @@ export class Drone {
     }
 
     let target = null;
-    let targetDistance = Infinity;
+    let hostileTargetDistance = Infinity;
 
     for (const enemy of enemies) {
       const dist = this.pos.distanceTo(enemy.pos);
-      if (dist < Math.max(this.senseRange, 150) && dist < targetDistance) {
+      if (dist < Math.max(this.senseRange, 150) && dist < hostileTargetDistance) {
         target = enemy;
-        targetDistance = dist;
+        hostileTargetDistance = dist;
       }
     }
 
     const enemyShipDistance = this.pos.distanceTo(enemyMothership.pos);
-    if (enemyShipDistance < 220 && enemyShipDistance < targetDistance) {
+    if (enemyShipDistance < 220 && enemyShipDistance < hostileTargetDistance) {
       target = enemyMothership;
-      targetDistance = enemyShipDistance;
+      hostileTargetDistance = enemyShipDistance;
     }
 
-    for (const planet of planets) {
-      if (planet.owner === this.team) continue;
-      const dist = this.pos.distanceTo(planet.pos);
-      if (dist < 260 && dist < targetDistance) {
-        target = planet;
-        targetDistance = dist;
+    // When both are available, hostile units should always outrank planets.
+    if (!target) {
+      let planetTargetDistance = Infinity;
+      for (const planet of planets) {
+        if (planet.owner === this.team) continue;
+        const dist = this.pos.distanceTo(planet.pos);
+        if (dist < 260 && dist < planetTargetDistance) {
+          target = planet;
+          planetTargetDistance = dist;
+        }
       }
     }
 
