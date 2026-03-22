@@ -45,6 +45,10 @@ function visibilityScale(zoom, minBoost = 1, maxBoost = 1.9) {
   return THREE.MathUtils.clamp(1 + (1 - zoom) * 1.15, minBoost, maxBoost);
 }
 
+function bodyVisibilityScale(zoom, minBoost = 1, maxBoost = 1.12) {
+  return THREE.MathUtils.clamp(1 + (1 - zoom) * 0.18, minBoost, maxBoost);
+}
+
 function planetOwnershipColor(team, palette) {
   if (team === 'neutral') return 0xb8c0cf;
   return new THREE.Color(palette.primary).lerp(new THREE.Color(palette.secondary), 0.58);
@@ -665,6 +669,7 @@ export class SpaceRenderer {
       const team = planet.pendingOwner || planet.owner || 'neutral';
       const palette = TEAM_COLORS[team];
       const readableScale = visibilityScale(game.camera.zoom, 1, 2.15);
+      const planetBodyScale = bodyVisibilityScale(game.camera.zoom, 1, 1.08);
       const texture = this.getPlanetMap(team);
       if (texture && sphere.material.map !== texture) {
         sphere.material.map = texture;
@@ -674,7 +679,7 @@ export class SpaceRenderer {
       group.position.set(worldXToScene(planet.pos.x), 0, worldYToScene(planet.pos.y));
       sphere.rotation.y += 0.003;
       sphere.position.y = planet.rebuildTimer > 0 ? -8 + planet.getRebuildProgress() * 10 : 0;
-      sphere.scale.setScalar((planet.rebuildTimer > 0 ? Math.max(0.12, planet.getRebuildProgress()) : 1) * readableScale);
+      sphere.scale.setScalar((planet.rebuildTimer > 0 ? Math.max(0.12, planet.getRebuildProgress()) : 1) * planetBodyScale);
       sphere.visible = !model;
       sphere.material.emissive.set(0x000000);
       sphere.material.emissiveIntensity = 0;
@@ -682,7 +687,7 @@ export class SpaceRenderer {
       const ownershipColor = planetOwnershipColor(team, palette);
       ownerRing.material.color.set(ownershipColor);
       ownerRing.material.opacity = planet.pendingOwner ? 1 : 0.96;
-      ownerRing.scale.setScalar(readableScale * 1.06);
+      ownerRing.scale.setScalar(planetBodyScale * 1.02);
       ownerRing.rotation.z += 0.003;
 
       const healthRatio = THREE.MathUtils.clamp(planet.health / planet.maxHealth, 0, 1);
@@ -725,7 +730,7 @@ export class SpaceRenderer {
         model.visible = true;
         model.position.y = planet.rebuildTimer > 0 ? -12 + planet.getRebuildProgress() * 14 : 0;
         model.rotation.y += 0.003;
-        model.scale.setScalar(planetModelScale(planet.radius) * (planet.rebuildTimer > 0 ? Math.max(0.12, planet.getRebuildProgress()) : 1) * readableScale);
+        model.scale.setScalar(planetModelScale(planet.radius) * (planet.rebuildTimer > 0 ? Math.max(0.12, planet.getRebuildProgress()) : 1) * planetBodyScale);
         model.traverse((child) => {
           if (!child.isMesh) return;
           if ('emissive' in child.material) {
@@ -746,11 +751,12 @@ export class SpaceRenderer {
       const group = this.shipObjects.get(team);
       const palette = TEAM_COLORS[team];
       const readableScale = visibilityScale(game.camera.zoom, 1, 1.8);
+      const shipBodyScale = bodyVisibilityScale(game.camera.zoom, 1, 1.06);
       group.position.set(worldXToScene(ship.pos.x), 12, worldYToScene(ship.pos.y));
       const targetYaw = -ship.angle;
       group.rotation.y = smoothAngle(group.rotation.y, targetYaw, 0.14);
       group.userData.aura.rotation.z += 0.01;
-      group.scale.setScalar((1 + Math.sin(game.time * 0.004 + (team === 'blue' ? 0 : 1.5)) * 0.015) * readableScale);
+      group.scale.setScalar((1 + Math.sin(game.time * 0.004 + (team === 'blue' ? 0 : 1.5)) * 0.015) * shipBodyScale);
       group.userData.aura.visible = !group.userData.model;
       group.userData.aura.material.color.set(palette.primary);
       group.userData.aura.material.opacity = 0.28;
@@ -781,9 +787,10 @@ export class SpaceRenderer {
       const group = this.droneObjects.get(drone);
       const palette = TEAM_COLORS[drone.team];
       const readableScale = visibilityScale(game.camera.zoom, 1, 1.5);
+      const droneBodyScale = bodyVisibilityScale(game.camera.zoom, 1, 1.04);
       group.position.set(worldXToScene(drone.pos.x), 8, worldYToScene(drone.pos.y));
       group.rotation.y = -drone.heading;
-      group.scale.setScalar((drone.radius / drone.baseRadius) * readableScale);
+      group.scale.setScalar((drone.radius / drone.baseRadius) * droneBodyScale);
       group.userData.marker.material.color.set(palette.primary);
       group.userData.marker.scale.setScalar(readableScale);
 

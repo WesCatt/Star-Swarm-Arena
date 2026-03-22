@@ -69,79 +69,83 @@
       </header>
 
       <section id="start-screen" class="screen visible">
-        <div class="screen-panel hero-panel">
-          <div class="hero-header">
-            <p class="eyebrow">Realtime Canvas Arena</p>
-            <div class="hero-kicker">2 players, 1 battlefield, 0 mercy</div>
+        <div class="start-cinematic" aria-hidden="true">
+          <div class="cinematic-darkness"></div>
+          <div class="cinematic-stars"></div>
+          <div class="cinematic-streaks streaks-left"></div>
+          <div class="cinematic-streaks streaks-right"></div>
+          <div class="cinematic-bloom bloom-blue"></div>
+          <div class="cinematic-bloom bloom-red"></div>
+
+          <div class="hero-ship ship-blue">
+            <div class="ship-thrust"></div>
+            <img src="./assets/planets/Ships/ship_0000.png" alt="" />
           </div>
 
-          <div class="hero-layout">
-            <section class="hero-copy">
-              <h1>Star Swarm Arena</h1>
-              <p class="subtitle">
-                A split-attention local duel where capital ships harvest planets, grow autonomous drone fleets,
-                and turn a shared screen into a tactical spectacle.
-              </p>
+          <div class="hero-ship ship-red">
+            <div class="ship-thrust"></div>
+            <img src="./assets/planets/Ships/ship_0012.png" alt="" />
+          </div>
+        </div>
 
-              <div class="hero-highlights">
-                <article class="highlight-card">
-                  <span class="highlight-label">Mode</span>
-                  <strong>Local versus</strong>
-                  <p>Blue and Red fleets share one world, one camera, and one escalating fight.</p>
-                </article>
-                <article class="highlight-card">
-                  <span class="highlight-label">Core Loop</span>
-                  <strong>Capture, scale, destroy</strong>
-                  <p>Own planets, boost your drone ceiling, and collapse the opposing mothership.</p>
-                </article>
-              </div>
-            </section>
+        <div class="start-logo-wrap">
+          <div class="start-logo-mark">
+            <span class="logo-backglow"></span>
+            <img class="logo-planet planet-main" src="./assets/planets/Planets/planet00.png" alt="" />
+            <img class="logo-planet planet-accent" src="./assets/planets/Planets/planet08.png" alt="" />
+            <span class="logo-orbit logo-orbit-a"></span>
+            <span class="logo-orbit logo-orbit-b"></span>
+            <img class="logo-light light-a" src="./assets/planets/Parts/light3.png" alt="" />
+            <img class="logo-light light-b" src="./assets/planets/Parts/light8.png" alt="" />
+          </div>
+          <div class="start-logo-type">
+            <div class="start-logo-kicker">Velocity Duel System</div>
+            <div class="start-logo-title">Star Swarm Arena</div>
+          </div>
+        </div>
 
-            <aside class="hero-sidebar">
-              <div class="brief-card">
-                <div class="brief-title">Controls</div>
-                <div class="brief-row"><span>Blue Fleet</span><strong>W A S D</strong></div>
-                <div class="brief-row"><span>Red Fleet</span><strong>Arrow Keys</strong></div>
-                <div class="brief-row"><span>Touch</span><strong>Dual thumbstick halves</strong></div>
-              </div>
+        <button id="audio-button" class="audio-button" type="button" aria-pressed="true">BGM</button>
 
-              <div class="brief-card">
-                <div class="brief-title">Victory</div>
-                <p>Break the enemy mothership before they overwhelm the map economy and outgrow your swarm.</p>
-              </div>
-            </aside>
+        <div class="start-side-panel">
+          <div class="start-copy">
+            <p class="start-overline">Local Split-Screen Battle</p>
+            <h1>Break Formation. Seize The Arena.</h1>
+            <p class="start-description">
+              Two rival flagships tear through a shared battlefield, racing for planets, fleet growth, and the final collapse.
+            </p>
           </div>
 
-          <div class="legend-block">
-            <div class="section-head">
-              <div class="legend-title">Power-up Catalogue</div>
-              <div class="legend-subtitle">Seven battlefield modifiers, each changing tempo in a different way.</div>
-            </div>
-            <div id="item-legend" class="legend-grid"></div>
-          </div>
-
-          <div class="start-actions">
-            <button id="blue-hold" class="hold-button blue" type="button">
-              <span class="hold-label">Blue Hold</span>
-              <small>Press together</small>
-            </button>
-            <button id="start-button" class="center-button" type="button">Launch Match</button>
-            <button id="red-hold" class="hold-button red" type="button">
-              <span class="hold-label">Red Hold</span>
-              <small>Press together</small>
+          <div class="start-cta-group">
+            <button id="start-button" class="start-primary-button" type="button">Start Battle</button>
+            <button id="settings-button" class="start-secondary-button" type="button" aria-expanded="false" aria-controls="settings-panel">
+              Settings
             </button>
           </div>
 
-          <p id="hold-hint" class="hold-hint">Either use the center launch button or hold both side triggers to deploy.</p>
+          <div id="settings-panel" class="settings-panel hidden">
+            <div class="settings-title">Quick Setup</div>
+            <div class="settings-row"><span>Blue Fleet</span><strong>W A S D</strong></div>
+            <div class="settings-row"><span>Red Fleet</span><strong>Arrow Keys</strong></div>
+            <div class="settings-row"><span>Touch</span><strong>Left / Right Screen</strong></div>
+            <div class="settings-note">Capture planets, raise your drone cap, and destroy the enemy mothership first.</div>
+          </div>
         </div>
       </section>
 
       <section id="victory-screen" class="screen hidden">
         <div class="screen-panel victory-panel">
-          <p class="eyebrow">Match Complete</p>
-          <h2 id="victory-title">Blue Fleet Victory</h2>
-          <p id="victory-subtitle" class="subtitle">The enemy flagship is gone. The arena now answers to a single command.</p>
-          <button id="restart-button" class="center-button" type="button">Run It Back</button>
+          <div class="victory-backdrop" aria-hidden="true">
+            <div class="victory-bloom victory-bloom-blue"></div>
+            <div class="victory-bloom victory-bloom-red"></div>
+            <div class="victory-ring ring-left"></div>
+            <div class="victory-ring ring-right"></div>
+          </div>
+          <div class="victory-content">
+            <p class="eyebrow">Match Complete</p>
+            <h2 id="victory-title">Blue Fleet Victory</h2>
+            <p id="victory-subtitle" class="subtitle">The enemy flagship is gone. The arena now answers to a single command.</p>
+            <button id="restart-button" class="start-primary-button victory-button" type="button">Run It Back</button>
+          </div>
         </div>
       </section>
     </div>

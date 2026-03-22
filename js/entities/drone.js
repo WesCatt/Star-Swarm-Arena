@@ -20,6 +20,21 @@ export class Drone {
     this.targetLock = 0;
   }
 
+  getClosestAttackablePlanet(planets, maxDistance = Infinity) {
+    let closestPlanet = null;
+    let closestDistance = maxDistance;
+
+    for (const planet of planets) {
+      if (planet.owner === this.team || planet.pendingOwner === this.team || planet.rebuildTimer > 0) continue;
+      const distance = this.pos.distanceTo(planet.pos);
+      if (distance >= closestDistance) continue;
+      closestPlanet = planet;
+      closestDistance = distance;
+    }
+
+    return { planet: closestPlanet, distance: closestDistance };
+  }
+
   isTargetValid(target, enemies, enemyMothership, planets) {
     if (!target || target.health <= 0) return false;
 
@@ -41,6 +56,13 @@ export class Drone {
   }
 
   pickTarget(enemies, enemyMothership, planets) {
+    const urgentPlanet = this.getClosestAttackablePlanet(planets, 260);
+    if (urgentPlanet.planet) {
+      this.currentTarget = urgentPlanet.planet;
+      this.targetLock = 18;
+      return urgentPlanet.planet;
+    }
+
     if (this.targetLock > 0 && this.isTargetValid(this.currentTarget, enemies, enemyMothership, planets)) {
       return this.currentTarget;
     }
@@ -74,13 +96,13 @@ export class Drone {
 
     if (nearestPlanet && nearestPlanetDistance < 360) {
       this.currentTarget = nearestPlanet;
-      this.targetLock = 40;
+      this.targetLock = 18;
       return nearestPlanet;
     }
 
     if (globalPlanet) {
       this.currentTarget = globalPlanet;
-      this.targetLock = 24;
+      this.targetLock = 10;
       return globalPlanet;
     }
 
@@ -104,7 +126,7 @@ export class Drone {
     }
 
     this.currentTarget = target;
-    this.targetLock = target?.kind === 'planet' ? 28 : target ? 12 : 0;
+    this.targetLock = target?.kind === 'planet' ? 12 : target ? 12 : 0;
     return target;
   }
 
@@ -192,8 +214,9 @@ export class Drone {
       const attackVector = new Vector2(forces.target.pos.x - this.pos.x, forces.target.pos.y - this.pos.y);
       const planetDistance = attackVector.length() || 1;
       attackVector.normalize();
-      const homingStrength = planetDistance > 280 ? 0.62 : 0.4;
-      this.vel.scale(0.88).add(attackVector.scale(homingStrength * tick)).limit(maxSpeed);
+      const homingStrength = planetDistance > 280 ? 0.72 : planetDistance > 180 ? 0.95 : 1.28;
+      const velocityDamping = planetDistance > 180 ? 0.84 : 0.74;
+      this.vel.scale(velocityDamping).add(attackVector.scale(homingStrength * tick)).limit(maxSpeed);
     }
 
     this.update(tick);

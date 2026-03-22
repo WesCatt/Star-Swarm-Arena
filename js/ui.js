@@ -4,11 +4,14 @@ import { padTime } from './utils.js';
 
 export class UI {
   constructor() {
+    this.appShell = document.querySelector('.app-shell');
     this.hud = document.getElementById('top-hud');
     this.startScreen = document.getElementById('start-screen');
     this.victoryScreen = document.getElementById('victory-screen');
     this.legend = document.getElementById('item-legend');
     this.startButton = document.getElementById('start-button');
+    this.settingsButton = document.getElementById('settings-button');
+    this.settingsPanel = document.getElementById('settings-panel');
     this.restartButton = document.getElementById('restart-button');
     this.blueHold = document.getElementById('blue-hold');
     this.redHold = document.getElementById('red-hold');
@@ -37,9 +40,11 @@ export class UI {
 
     this.populateLegend();
     this.bindHoldButtons();
+    this.bindSettings();
   }
 
   populateLegend() {
+    if (!this.legend) return;
     this.legend.innerHTML = ITEM_TYPES.map((item) => `
       <article class="legend-item">
         <div class="legend-icon" style="--icon-accent:${item.accent}">
@@ -52,11 +57,12 @@ export class UI {
   }
 
   bindCallbacks(callbacks) {
-    this.startButton.addEventListener('click', callbacks.onStart);
-    this.restartButton.addEventListener('click', callbacks.onRestart);
+    this.startButton?.addEventListener('click', callbacks.onStart);
+    this.restartButton?.addEventListener('click', callbacks.onRestart);
   }
 
   bindHoldButtons() {
+    if (!this.blueHold || !this.redHold) return;
     const bind = (element, key) => {
       const down = () => {
         this.dualHold[key] = true;
@@ -75,7 +81,18 @@ export class UI {
     bind(this.redHold, 'red');
   }
 
+  bindSettings() {
+    if (!this.settingsButton || !this.settingsPanel) return;
+
+    this.settingsButton.addEventListener('click', () => {
+      const open = this.settingsPanel.classList.toggle('is-open');
+      this.settingsPanel.classList.toggle('hidden', !open);
+      this.settingsButton.setAttribute('aria-expanded', String(open));
+    });
+  }
+
   updateDualHold(delta, onReady) {
+    if (!this.blueHold || !this.redHold) return;
     if (this.dualHold.blue && this.dualHold.red) {
       this.dualHold.progress = Math.min(1, this.dualHold.progress + delta / 900);
     } else {
@@ -97,18 +114,27 @@ export class UI {
   }
 
   showStart() {
+    this.appShell?.classList.remove('state-playing', 'state-victory');
+    this.appShell?.classList.add('state-start');
     this.hud.classList.add('hidden');
     this.victoryScreen.classList.add('hidden');
     this.startScreen.classList.remove('hidden');
+    this.settingsPanel?.classList.add('hidden');
+    this.settingsPanel?.classList.remove('is-open');
+    this.settingsButton?.setAttribute('aria-expanded', 'false');
   }
 
   showPlaying() {
+    this.appShell?.classList.remove('state-start', 'state-victory');
+    this.appShell?.classList.add('state-playing');
     this.startScreen.classList.add('hidden');
     this.victoryScreen.classList.add('hidden');
     this.hud.classList.remove('hidden');
   }
 
   showVictory(team) {
+    this.appShell?.classList.remove('state-start', 'state-playing');
+    this.appShell?.classList.add('state-victory');
     this.hud.classList.remove('hidden');
     this.victoryScreen.classList.remove('hidden');
     const winner = TEAM_COLORS[team].text;
