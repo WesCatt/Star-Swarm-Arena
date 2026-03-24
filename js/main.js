@@ -3,7 +3,34 @@ import { AudioManager } from './audio.js';
 import { loadAssets } from './assets.js';
 
 window.addEventListener('DOMContentLoaded', async () => {
-  await loadAssets();
+  const loadingScreen = document.getElementById('loading-screen');
+  const loadingBar = document.getElementById('loading-bar');
+  const loadingPercent = document.getElementById('loading-percent');
+  const loadingKicker = document.getElementById('loading-kicker');
+  const loadingStatus = document.getElementById('loading-status');
+  const loadingMessages = [
+    { until: 0.18, text: '\u6b63\u5728\u6821\u51c6\u661f\u56fe\u4e2d' },
+    { until: 0.42, text: '\u6b63\u5728\u7ec4\u88c5\u98de\u8239\u4e2d' },
+    { until: 0.72, text: '\u6b63\u5728\u90e8\u7f72\u98de\u8239\u4e2d' },
+    { until: 0.92, text: '\u6b63\u5728\u63a5\u5165\u822a\u9053\u4e2d' },
+    { until: 1, text: '\u5373\u5c06\u8dc3\u8fc1\u81f3\u6218\u573a' },
+  ];
+
+  const getLoadingMessage = (progress) => {
+    const match = loadingMessages.find((entry) => progress < entry.until);
+    return match?.text || '\u8230\u961f\u5df2\u5c31\u7eea';
+  };
+
+  const setLoadingProgress = ({ progress }) => {
+    const percent = Math.round(progress * 100);
+    if (loadingBar) loadingBar.style.width = `${percent}%`;
+    if (loadingPercent) loadingPercent.textContent = `${percent}%`;
+    if (loadingStatus) loadingStatus.textContent = getLoadingMessage(progress);
+  };
+
+  await loadAssets({ onProgress: setLoadingProgress });
+  setLoadingProgress({ progress: 1 });
+
   const canvas = document.getElementById('game-canvas');
   const audio = new AudioManager();
   const game = new Game(canvas, audio);
@@ -54,5 +81,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   };
 
   game.start();
+  loadingScreen?.classList.add('hidden');
   syncAudio();
 });

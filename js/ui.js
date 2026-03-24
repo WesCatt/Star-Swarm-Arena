@@ -23,7 +23,7 @@ const TRANSLATIONS = {
     onlineLabel: 'Online',
     mobileLabel: 'Mobile',
     localControls: 'W A S D / Arrows',
-    onlineControls: 'W A S D + Space',
+    onlineControls: 'W A S D + Space + H + K',
     mobileControls: 'Left Move / Right Boost',
     settingsNote: 'Online rooms hold 6 slots. Empty seats stay active as bots, and new players inherit that bot\'s current resources.',
     matchComplete: 'Match Complete',
@@ -53,6 +53,7 @@ const TRANSLATIONS = {
       'drone-attack': { name: 'Attack x2', description: 'Drone damage doubles for 3 seconds.' },
       neutralize: { name: 'Neutralize', description: 'One enemy planet is reset to neutral instantly.' },
       autocapture: { name: 'Auto Capture', description: 'Claims the nearest planet after 3 seconds.' },
+      'cooldown-haste': { name: 'Half Cooldown', description: 'Current skill cooldowns are halved, and new cooldowns stay halved for 6 seconds.' },
     },
     buffs: {
       shipSpeed: 'Ship Speed',
@@ -61,6 +62,7 @@ const TRANSLATIONS = {
       droneSpeed: 'Drone Speed',
       droneDamage: 'Attack x2',
       autocapture: 'Auto Capture',
+      cooldownHaste: 'Half Cooldown',
     },
     teams: {
       blue: 'Blue Fleet',
@@ -68,71 +70,72 @@ const TRANSLATIONS = {
     },
   },
   zh: {
-    langButton: '中文',
-    pageTitle: '星群竞技场',
-    blueFleet: '蓝方舰队',
-    redFleet: '红方舰队',
-    mothershipCommand: '母舰指挥',
-    strikeFormation: '突击编队',
-    arenaStatus: '战场状态',
-    velocitySystem: '高速对决系统',
-    logoTitle: '星群竞技场',
-    startOverline: '本地与在线舰队竞技',
-    startTitle: '突破阵线，夺取战场。',
-    startDescription: '你可以选择本地同屏对战，或进入一个最多 6 人的在线房间，让机器人先守住战局，玩家加入后直接接管它们当前的资源。',
-    localPlay: '本地游玩',
-    onlinePlay: '在线游玩',
-    modeNotes: '模式说明',
-    localLabel: '本地',
-    onlineLabel: '在线',
-    mobileLabel: '手机',
-    localControls: 'W A S D / 方向键',
-    onlineControls: 'W A S D + 空格',
-    mobileControls: '左侧移动 / 右侧加速',
-    settingsNote: '在线房间一共 6 个槽位，空位默认由机器人游玩，玩家加入后会接管该机器人的当前资源。',
-    matchComplete: '对局结束',
-    runItBack: '再来一局',
-    backToHome: '返回主页',
-    onlineMatch: '在线对局',
-    onlineConnectingTitle: '正在连接舰队中继',
-    onlineConnectingSubtitle: '正在寻找一个最多 6 人的房间。空位会先由机器人代打，直到玩家接入。',
-    onlineWaiting: '正在等待服务器...',
-    roomRoster: '房间成员',
-    resourceLabel: '资源',
-    planetLabel: '星球',
-    elimLabel: '击破',
-    hullLabel: '血量',
-    boostLabel: '加速',
-    battleLive: '战斗进行中',
-    awaitingRestart: '等待重开',
-    standBy: '待命中',
-    neutralTip: (count, cap) => `剩余中立星球 ${count} 颗。道具上限 ${cap}。`,
-    victoryTitle: (winner) => `${winner} 胜利`,
-    victorySubtitle: (winner) => `敌方母舰已被摧毁，现在由 ${winner} 掌控这片战场。`,
+    langButton: 'ZH',
+    pageTitle: 'Star Swarm Arena',
+    blueFleet: 'Blue Fleet',
+    redFleet: 'Red Fleet',
+    mothershipCommand: 'Mothership Command',
+    strikeFormation: 'Strike Formation',
+    arenaStatus: 'Arena Status',
+    velocitySystem: 'Velocity Duel System',
+    logoTitle: 'Star Swarm Arena',
+    startOverline: 'Online And Local Fleet Arena',
+    startTitle: 'Break Formation. Seize The Arena.',
+    startDescription: 'Join local or online battles with up to 6 pilots and persistent bot seats.',
+    localPlay: 'Local Play',
+    onlinePlay: 'Online Play',
+    modeNotes: 'Mode Notes',
+    localLabel: 'Local',
+    onlineLabel: 'Online',
+    mobileLabel: 'Mobile',
+    localControls: 'W A S D / Arrows',
+    onlineControls: 'W A S D + Space + H + K',
+    mobileControls: 'Left Move / Right Boost',
+    settingsNote: 'Online rooms keep 6 active seats. Bots fill empty seats until real pilots join.',
+    matchComplete: 'Match Complete',
+    runItBack: 'Run It Back',
+    backToHome: 'Back To Home',
+    onlineMatch: 'Online Match',
+    onlineConnectingTitle: 'Connecting To Fleet Relay',
+    onlineConnectingSubtitle: 'Finding a room with up to 6 players. Empty seats stay active as bots until someone joins.',
+    onlineWaiting: 'Waiting for server...',
+    roomRoster: 'Room Roster',
+    resourceLabel: 'Resources',
+    planetLabel: 'Planets',
+    elimLabel: 'Elims',
+    hullLabel: 'Hull',
+    boostLabel: 'Boost',
+    battleLive: 'Battle Live',
+    awaitingRestart: 'Awaiting Restart',
+    standBy: 'Stand By',
+    neutralTip: (count, cap) => `${count} neutral planets remain. Item cap: ${cap}.`,
+    victoryTitle: (winner) => `${winner} Victory`,
+    victorySubtitle: (winner) => `The enemy flagship is down. ${winner} now controls the arena.`,
     items: {
-      'ship-speed': { name: '母舰加速', description: '母舰速度提升 50%，持续 3 秒。' },
-      production: { name: '产能翻倍', description: '无人机产出翻倍，持续 3 秒。' },
-      'drone-size': { name: '无人机增幅', description: '无人机体型提升 80%，持续 3 秒。' },
-      'drone-speed': { name: '无人机提速', description: '无人机速度提升 50%，持续 3 秒。' },
-      'drone-attack': { name: '攻击翻倍', description: '无人机伤害翻倍，持续 3 秒。' },
-      neutralize: { name: '中立化', description: '立即将一颗敌方星球重置为中立。' },
-      autocapture: { name: '自动占领', description: '3 秒后自动夺取最近的一颗星球。' },
+      'ship-speed': { name: 'Ship Speed', description: 'Mothership speed +50% for 3 seconds.' },
+      production: { name: 'Production', description: 'Drone output doubles for 3 seconds.' },
+      'drone-size': { name: 'Drone Size', description: 'Drone body size +80% for 3 seconds.' },
+      'drone-speed': { name: 'Drone Speed', description: 'Drone speed +50% for 3 seconds.' },
+      'drone-attack': { name: 'Attack x2', description: 'Drone damage doubles for 3 seconds.' },
+      neutralize: { name: 'Neutralize', description: 'One enemy planet is reset to neutral instantly.' },
+      autocapture: { name: 'Auto Capture', description: 'Claims the nearest planet after 3 seconds.' },
+      'cooldown-haste': { name: 'Half Cooldown', description: 'Current skill cooldowns are halved, and new cooldowns stay halved for 6 seconds.' },
     },
     buffs: {
-      shipSpeed: '母舰加速',
-      production: '产能翻倍',
-      droneSize: '无人机增幅',
-      droneSpeed: '无人机提速',
-      droneDamage: '攻击翻倍',
-      autocapture: '自动占领',
+      shipSpeed: 'Ship Speed',
+      production: 'Production',
+      droneSize: 'Drone Size',
+      droneSpeed: 'Drone Speed',
+      droneDamage: 'Attack x2',
+      autocapture: 'Auto Capture',
+      cooldownHaste: 'Half Cooldown',
     },
     teams: {
-      blue: '蓝方舰队',
-      red: '红方舰队',
+      blue: 'Blue Fleet',
+      red: 'Red Fleet',
     },
   },
 };
-
 const ONLINE_SHIP_AVATARS = {
   'slot-1': new URL('../assets/planets/Ships/ship_0000.png', import.meta.url).href,
   'slot-2': new URL('../assets/planets/Ships/ship_0004.png', import.meta.url).href,
@@ -150,6 +153,7 @@ export class UI {
     this.hud = document.getElementById('top-hud');
     this.onlineHud = document.getElementById('online-hud');
     this.onlineMobileHud = document.getElementById('online-mobile-hud');
+    this.onlineRoomIndicator = document.getElementById('online-room-indicator');
     this.startScreen = document.getElementById('start-screen');
     this.onlineStatusScreen = document.getElementById('online-status-screen');
     this.victoryScreen = document.getElementById('victory-screen');
@@ -183,9 +187,12 @@ export class UI {
     this.pickupNoticeEntries = [];
     this.pickupNoticeTimers = new Map();
     this.pickupNoticeSeq = 0;
+    this.seenOnlinePickupIds = new Set();
     this.currentMode = 'local';
     this.lastOnlineHudSignature = '';
     this.lastOnlineRosterSignature = '';
+    this.onlineRoomText = '';
+    this.onlineFps = 0;
 
     this.textRefs = {
       html: document.documentElement,
@@ -240,20 +247,34 @@ export class UI {
       name: document.getElementById('online-player-name'),
       room: document.getElementById('online-player-room'),
       healthBar: document.getElementById('online-health-bar'),
-      energyBar: document.getElementById('online-energy-bar'),
       resourceText: document.getElementById('online-resource-text'),
       planetText: document.getElementById('online-planet-text'),
       killText: document.getElementById('online-kill-text'),
+      skillRepair: document.getElementById('online-skill-repair'),
+      skillArc: document.getElementById('online-skill-arc'),
+      targetLock: document.getElementById('online-target-lock'),
+      targetName: document.getElementById('online-target-name'),
+      targetHealthBar: document.getElementById('online-target-health-bar'),
+      targetHealthText: document.getElementById('online-target-health-text'),
       mobileCard: document.getElementById('online-mobile-card'),
       mobileAvatar: document.getElementById('online-mobile-avatar'),
       mobileRoom: document.getElementById('online-mobile-room'),
       mobileSeat: document.getElementById('online-mobile-seat'),
       mobileName: document.getElementById('online-mobile-name'),
       mobileHealthBar: document.getElementById('online-mobile-health-bar'),
-      mobileEnergyBar: document.getElementById('online-mobile-energy-bar'),
       mobileResourceText: document.getElementById('online-mobile-resource-text'),
       mobilePlanetText: document.getElementById('online-mobile-planet-text'),
       mobileKillText: document.getElementById('online-mobile-kill-text'),
+      mobileSkillRepair: document.getElementById('online-mobile-skill-repair'),
+      mobileSkillArc: document.getElementById('online-mobile-skill-arc'),
+      mobileTargetLock: document.getElementById('online-mobile-target-lock'),
+      mobileTargetName: document.getElementById('online-mobile-target-name'),
+      mobileTargetHealthBar: document.getElementById('online-mobile-target-health-bar'),
+      mobileTargetHealthText: document.getElementById('online-mobile-target-health-text'),
+      touchSkillRepairLabel: document.getElementById('online-repair-label'),
+      touchSkillArcLabel: document.getElementById('online-arc-label'),
+      touchSkillRepair: document.getElementById('online-repair-cooldown'),
+      touchSkillArc: document.getElementById('online-arc-cooldown'),
     };
 
     this.bindLanguage();
@@ -308,14 +329,12 @@ export class UI {
     if (this.textRefs.victoryEyebrow) this.textRefs.victoryEyebrow.textContent = t.matchComplete;
     if (this.textRefs.onlineHudTitle) this.textRefs.onlineHudTitle.textContent = t.roomRoster;
     if (this.textRefs.onlineStatusEyebrow) this.textRefs.onlineStatusEyebrow.textContent = t.onlineMatch;
-    if (this.onlineMenuButton) this.onlineMenuButton.textContent = this.currentLanguage === 'en' ? 'Settings' : '设置';
+    if (this.onlineMenuButton) this.onlineMenuButton.textContent = 'Settings';
     if (this.textRefs.onlineMenuEyebrow) this.textRefs.onlineMenuEyebrow.textContent = t.onlineMatch;
-    if (this.textRefs.onlineMenuTitle) this.textRefs.onlineMenuTitle.textContent = this.currentLanguage === 'en' ? 'Match Menu' : '在线菜单';
-    if (this.textRefs.onlineMenuCopy) this.textRefs.onlineMenuCopy.textContent = this.currentLanguage === 'en'
-      ? 'Choose to keep flying or leave this room and return to the home screen.'
-      : '你可以继续游戏，或者离开当前房间并返回主页。';
-    if (this.onlineMenuContinueButton) this.onlineMenuContinueButton.textContent = this.currentLanguage === 'en' ? 'Continue' : '继续';
-    if (this.onlineMenuLeaveButton) this.onlineMenuLeaveButton.textContent = this.currentLanguage === 'en' ? 'Leave Game' : '离开游戏';
+    if (this.textRefs.onlineMenuTitle) this.textRefs.onlineMenuTitle.textContent = 'Match Menu';
+    if (this.textRefs.onlineMenuCopy) this.textRefs.onlineMenuCopy.textContent = 'Choose to keep flying or leave this room and return to the home screen.';
+    if (this.onlineMenuContinueButton) this.onlineMenuContinueButton.textContent = 'Continue';
+    if (this.onlineMenuLeaveButton) this.onlineMenuLeaveButton.textContent = 'Leave Game';
     if (this.onlineStatusTitle && !this.onlineStatusTitle.dataset.customized) this.onlineStatusTitle.textContent = t.onlineConnectingTitle;
     if (this.onlineStatusSubtitle && !this.onlineStatusSubtitle.dataset.customized) this.onlineStatusSubtitle.textContent = t.onlineConnectingSubtitle;
     if (this.onlineStatusMeta && !this.onlineStatusMeta.dataset.customized) this.onlineStatusMeta.textContent = t.onlineWaiting;
@@ -355,6 +374,7 @@ export class UI {
     this.hud.classList.add('hidden');
     this.onlineHud.classList.add('hidden');
     this.onlineMobileHud.classList.add('hidden');
+    this.onlineRoomIndicator?.classList.add('hidden');
     this.hideOnlineMenu();
     this.onlineMenuButton?.classList.add('hidden');
     this.settingsPanel?.classList.remove('hidden');
@@ -369,18 +389,21 @@ export class UI {
     this.hud.classList.remove('hidden');
     this.onlineHud.classList.add('hidden');
     this.onlineMobileHud.classList.add('hidden');
+    this.onlineRoomIndicator?.classList.add('hidden');
     this.hideOnlineMenu();
     this.onlineMenuButton?.classList.add('hidden');
   }
 
   showOnlineStatus(status = {}) {
     const t = TRANSLATIONS[this.currentLanguage];
+    this.clearPickupNotices();
     this.setVisualState('start', 'online');
     this.startScreen.classList.add('hidden');
     this.victoryScreen.classList.add('hidden');
     this.hud.classList.add('hidden');
     this.onlineHud.classList.add('hidden');
     this.onlineMobileHud.classList.add('hidden');
+    this.onlineRoomIndicator?.classList.add('hidden');
     this.hideOnlineMenu();
     this.onlineMenuButton?.classList.add('hidden');
     this.onlineStatusScreen.classList.remove('hidden');
@@ -407,7 +430,9 @@ export class UI {
     this.hud.classList.add('hidden');
     this.onlineHud.classList.remove('hidden');
     this.onlineMobileHud.classList.remove('hidden');
+    this.onlineRoomIndicator?.classList.remove('hidden');
     this.onlineMenuButton?.classList.remove('hidden');
+    this.refreshOnlineRoomIndicator();
   }
 
   showVictory(team) {
@@ -416,6 +441,7 @@ export class UI {
     this.hud.classList.remove('hidden');
     this.onlineHud.classList.add('hidden');
     this.onlineMobileHud.classList.add('hidden');
+    this.onlineRoomIndicator?.classList.add('hidden');
     this.hideOnlineMenu();
     this.onlineMenuButton?.classList.add('hidden');
     this.onlineStatusScreen.classList.add('hidden');
@@ -439,6 +465,20 @@ export class UI {
     const isHidden = this.onlineMenuModal.classList.contains('hidden');
     if (isHidden) this.showOnlineMenu();
     else this.hideOnlineMenu();
+  }
+
+  refreshOnlineRoomIndicator() {
+    if (!this.onlineRoomIndicator) return;
+    const room = this.onlineRoomText || 'Room --';
+    const fps = this.onlineFps > 0 ? `  ${this.onlineFps} fps` : '';
+    this.onlineRoomIndicator.textContent = `${room}${fps}`;
+  }
+
+  setOnlineFps(fps) {
+    const rounded = Number.isFinite(fps) ? Math.max(0, Math.round(fps)) : 0;
+    if (rounded === this.onlineFps) return;
+    this.onlineFps = rounded;
+    if (this.currentMode === 'online') this.refreshOnlineRoomIndicator();
   }
 
   updateDualHold() {}
@@ -476,7 +516,7 @@ export class UI {
   }
 
   getPickupLeadText() {
-    return this.currentLanguage === 'en' ? 'Picked up' : '获得道具';
+    return 'Picked up';
   }
 
   clearPickupNoticeForTeam(team) {
@@ -492,6 +532,7 @@ export class UI {
   }
 
   clearPickupNotices() {
+    this.seenOnlinePickupIds.clear();
     for (const timer of this.pickupNoticeTimers.values()) {
       window.clearTimeout(timer);
     }
@@ -511,20 +552,20 @@ export class UI {
   }
 
   renderPickupNotices() {
-    for (const team of ['blue', 'red']) {
-      const stack = this.pickupNoticeStacks[team];
+    for (const stackName of ['blue', 'red']) {
+      const stack = this.pickupNoticeStacks[stackName];
       if (!stack) continue;
-      const teamName = TRANSLATIONS[this.currentLanguage].teams[team] || TEAM_COLORS[team].text;
-      const lead = this.getPickupLeadText();
       stack.innerHTML = this.pickupNoticeEntries
-        .filter((entry) => entry.team === team)
+        .filter((entry) => (entry.stack || entry.team) === stackName)
         .map((entry) => {
           const itemText = this.getItemText(entry.itemId);
+          const teamName = TRANSLATIONS[this.currentLanguage].teams[entry.team] || TEAM_COLORS[entry.team]?.text || entry.teamLabel || 'Pilot';
+          const kicker = entry.kicker || `${teamName} / ${this.getPickupLeadText()}`;
           return `
-            <article class="pickup-notice-card ${team}" style="--pickup-accent:${entry.accent}">
+            <article class="pickup-notice-card ${stackName}" style="--pickup-accent:${entry.accent}">
               <div class="pickup-notice-icon" aria-hidden="true">${itemText.icon}</div>
               <div class="pickup-notice-copy">
-                <div class="pickup-notice-kicker">${teamName} · ${lead}</div>
+                <div class="pickup-notice-kicker">${kicker}</div>
                 <div class="pickup-notice-name">${itemText.name}</div>
                 <div class="pickup-notice-desc">${itemText.description}</div>
               </div>
@@ -535,21 +576,47 @@ export class UI {
     }
   }
 
-  showPickupNotice(team, itemType) {
+  showPickupNotice(team, itemType, options = {}) {
     if (!team || !itemType?.id) return;
-    this.clearPickupNoticeForTeam(team);
+    const channel = options.channel || team;
+    this.clearPickupNoticeForTeam(channel);
     const entry = {
       id: `pickup-${this.pickupNoticeSeq += 1}`,
-      team,
+      team: channel,
+      stack: options.stack || (team === 'red' ? 'red' : 'blue'),
+      teamLabel: options.teamLabel || null,
+      kicker: options.kicker || null,
       itemId: itemType.id,
-      accent: itemType.accent,
+      accent: options.accent || itemType.accent,
     };
     this.pickupNoticeEntries.push(entry);
     this.renderPickupNotices();
-    const timer = window.setTimeout(() => this.removePickupNotice(entry.id), 2200);
+    const timer = window.setTimeout(() => this.removePickupNotice(entry.id), options.duration || 2200);
     this.pickupNoticeTimers.set(entry.id, timer);
   }
 
+  consumeOnlinePickupEvents(snapshot, playerSlotId, player) {
+    if (!snapshot || !playerSlotId || !player) return;
+    for (const event of snapshot.pickupEvents || []) {
+      if (event.collectorSlotId !== playerSlotId || this.seenOnlinePickupIds.has(event.id)) continue;
+      this.seenOnlinePickupIds.add(event.id);
+      if (this.seenOnlinePickupIds.size > 48) {
+        const oldestId = this.seenOnlinePickupIds.values().next().value;
+        if (oldestId) this.seenOnlinePickupIds.delete(oldestId);
+      }
+      this.showPickupNotice(playerSlotId, {
+        id: event.itemTypeId,
+        accent: event.accent,
+      }, {
+        channel: `online-${playerSlotId}`,
+        stack: 'blue',
+        teamLabel: player.badge,
+        kicker: `${player.badge} / PICKED UP`,
+        accent: event.accent,
+        duration: 2400,
+      });
+    }
+  }
   updateHUD(snapshot) {
     if (!snapshot || this.currentMode !== 'local') return;
     for (const team of ['blue', 'red']) {
@@ -559,9 +626,7 @@ export class UI {
       refs.bar.style.width = `${entry.healthRatio * 100}%`;
       refs.health.textContent = `${Math.ceil(entry.health)}/${entry.maxHealth}`;
       refs.drones.textContent = `${entry.drones}/${entry.cap}`;
-      refs.planets.textContent = this.currentLanguage === 'en'
-        ? `${entry.planets} planets`
-        : `${entry.planets}颗星球`;
+      refs.planets.textContent = `${entry.planets} planets`;
       refs.buffs.innerHTML = entry.buffs.length
         ? entry.buffs.map((buff) => `<span class="buff-pill">${TRANSLATIONS[this.currentLanguage].buffs[buff.type] || buff.label}<small>${padTime(buff.remaining)}</small></span>`).join('')
         : '';
@@ -571,12 +636,75 @@ export class UI {
     this.hudTip.textContent = TRANSLATIONS[this.currentLanguage].neutralTip(snapshot.neutralPlanets, snapshot.itemCap);
   }
 
+  formatOnlineCooldown(frames) {
+    if (!Number.isFinite(frames) || frames <= 0) return 'READY';
+    const seconds = frames / 60;
+    return seconds >= 10 ? `${Math.ceil(seconds)}S` : `${seconds.toFixed(1)}S`;
+  }
+
+  updateOnlineSkillPill(element, key, frames) {
+    if (!element) return;
+    const isReady = !Number.isFinite(frames) || frames <= 0;
+    element.textContent = `${key} ${this.formatOnlineCooldown(frames)}`;
+    element.classList.toggle('ready', isReady);
+  }
+
+  updateOnlineTouchCooldown(element, label, readyText, frames) {
+    if (!element && !label) return;
+    const isReady = !Number.isFinite(frames) || frames <= 0;
+    const cooldownText = this.formatOnlineCooldown(frames);
+    if (element) {
+      element.textContent = cooldownText;
+      element.classList.toggle('ready', isReady);
+    }
+    if (label) {
+      label.textContent = isReady ? readyText : cooldownText;
+      label.classList.toggle('cooling', !isReady);
+      label.classList.toggle('ready', isReady);
+    }
+  }
+
+  updateOnlineTargetLock(snapshot, playerSlotId) {
+    const effect = (snapshot.skillEffects || []).find((entry) => (
+      (entry.type === 'arc-strike' || entry.type === 'arc-orb')
+      && entry.ownerSlotId === playerSlotId
+      && entry.targetSlotId
+    ));
+    const target = effect
+      ? snapshot.ships.find((ship) => ship.slotId === effect.targetSlotId && ship.health > 0 && ship.respawnFrames <= 0)
+      : null;
+
+    const pairs = [
+      {
+        root: this.onlineRefs.targetLock,
+        name: this.onlineRefs.targetName,
+        bar: this.onlineRefs.targetHealthBar,
+        text: this.onlineRefs.targetHealthText,
+      },
+      {
+        root: this.onlineRefs.mobileTargetLock,
+        name: this.onlineRefs.mobileTargetName,
+        bar: this.onlineRefs.mobileTargetHealthBar,
+        text: this.onlineRefs.mobileTargetHealthText,
+      },
+    ];
+
+    for (const refs of pairs) {
+      if (!refs.root) continue;
+      refs.root.classList.add('hidden');
+    }
+
+    return target;
+  }
+
   updateOnlineHud(snapshot, playerSlotId) {
     if (!snapshot || !playerSlotId) return;
 
     const t = TRANSLATIONS[this.currentLanguage];
     const player = snapshot.ships.find((ship) => ship.slotId === playerSlotId);
     if (!player) return;
+    const target = this.updateOnlineTargetLock(snapshot, playerSlotId);
+    this.consumeOnlinePickupEvents(snapshot, playerSlotId, player);
 
     const hudSignature = [
       snapshot.roomId,
@@ -589,6 +717,10 @@ export class UI {
       Math.round(player.resources),
       player.planets,
       player.eliminations,
+      Math.round(player.repairCooldown || 0),
+      Math.round(player.arcCooldown || 0),
+      target?.slotId || 'none',
+      Math.round(target?.health || 0),
     ].join('|');
 
     if (hudSignature === this.lastOnlineHudSignature) {
@@ -597,23 +729,39 @@ export class UI {
     this.lastOnlineHudSignature = hudSignature;
 
     this.syncOnlineIdentity(player);
-    this.onlineRefs.badge.textContent = player.badge;
-    this.onlineRefs.name.textContent = player.name;
-    this.onlineRefs.room.textContent = `${snapshot.roomId} · ${snapshot.playerCount}/${snapshot.capacity}`;
+    const roomText = `${snapshot.roomId} ${snapshot.playerCount}/${snapshot.capacity}`;
+    this.onlineRoomText = roomText;
+    if (this.onlineRefs.badge) this.onlineRefs.badge.textContent = '';
+    if (this.onlineRefs.name) this.onlineRefs.name.textContent = '';
+    if (this.onlineRefs.room) this.onlineRefs.room.textContent = '';
+    this.refreshOnlineRoomIndicator();
     this.onlineRefs.healthBar.style.width = `${(player.health / player.maxHealth) * 100}%`;
-    this.onlineRefs.energyBar.style.width = `${(player.energy / player.maxEnergy) * 100}%`;
     this.onlineRefs.resourceText.textContent = `${t.resourceLabel} ${Math.round(player.resources)}`;
     this.onlineRefs.planetText.textContent = `${t.planetLabel} ${player.planets}`;
-    this.onlineRefs.killText.textContent = `${t.elimLabel} ${player.eliminations} · ${t.boostLabel} ${Math.round(player.energy)}`;
+    this.onlineRefs.killText.textContent = `${t.elimLabel} ${player.eliminations}`;
+    this.updateOnlineSkillPill(this.onlineRefs.skillRepair, 'H', player.repairCooldown || 0);
+    this.updateOnlineSkillPill(this.onlineRefs.skillArc, 'K', player.arcCooldown || 0);
 
-    this.onlineRefs.mobileRoom.textContent = `${snapshot.roomId} · ${snapshot.playerCount}/${snapshot.capacity}`;
-    this.onlineRefs.mobileSeat.textContent = player.badge;
-    this.onlineRefs.mobileName.textContent = player.name;
+    if (this.onlineRefs.mobileRoom) this.onlineRefs.mobileRoom.textContent = '';
+    if (this.onlineRefs.mobileSeat) this.onlineRefs.mobileSeat.textContent = '';
+    if (this.onlineRefs.mobileName) this.onlineRefs.mobileName.textContent = '';
     this.onlineRefs.mobileHealthBar.style.width = `${(player.health / player.maxHealth) * 100}%`;
-    this.onlineRefs.mobileEnergyBar.style.width = `${(player.energy / player.maxEnergy) * 100}%`;
     this.onlineRefs.mobileResourceText.textContent = `${t.resourceLabel[0] || 'R'} ${Math.round(player.resources)}`;
     this.onlineRefs.mobilePlanetText.textContent = `${t.planetLabel[0] || 'P'} ${player.planets}`;
-    this.onlineRefs.mobileKillText.textContent = `${t.boostLabel[0] || 'B'} ${Math.round(player.energy)} · ${t.elimLabel[0] || 'K'} ${player.eliminations}`;
-
+    this.onlineRefs.mobileKillText.textContent = `${t.elimLabel[0] || 'K'} ${player.eliminations}`;
+    this.updateOnlineSkillPill(this.onlineRefs.mobileSkillRepair, 'H', player.repairCooldown || 0);
+    this.updateOnlineSkillPill(this.onlineRefs.mobileSkillArc, 'K', player.arcCooldown || 0);
+    this.updateOnlineTouchCooldown(
+      this.onlineRefs.touchSkillRepair,
+      this.onlineRefs.touchSkillRepairLabel,
+      'H',
+      player.repairCooldown || 0,
+    );
+    this.updateOnlineTouchCooldown(
+      this.onlineRefs.touchSkillArc,
+      this.onlineRefs.touchSkillArcLabel,
+      'K',
+      player.arcCooldown || 0,
+    );
   }
 }

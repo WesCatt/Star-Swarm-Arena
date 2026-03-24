@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 import { ONLINE_SOCKET_PORT } from './online-constants.js';
 
 const SESSION_KEY = 'ssa-online-session-id';
+const DEFAULT_SOCKET_URL = `http://192.168.44.111:${ONLINE_SOCKET_PORT}`;
 
 function getSessionId() {
   const existing = window.localStorage.getItem(SESSION_KEY);
@@ -12,15 +13,7 @@ function getSessionId() {
 }
 
 function resolveServerUrl() {
-  const configured = window.localStorage.getItem('ssa-online-server');
-  if (configured) {
-    return configured;
-  }
-
-  const { protocol, hostname, port } = window.location;
-  const normalizedProtocol = protocol === 'https:' ? 'https:' : 'http:';
-  const preferredPort = port === String(ONLINE_SOCKET_PORT) ? port : String(ONLINE_SOCKET_PORT);
-  return `${normalizedProtocol}//${hostname}:${preferredPort}`;
+  return DEFAULT_SOCKET_URL;
 }
 
 export class NetworkClient {

@@ -51,14 +51,21 @@ function loadImage(url) {
   });
 }
 
-export async function loadAssets() {
+export async function loadAssets(options = {}) {
+  const { onProgress } = options;
   const entries = [
     ...Object.entries(PLANET_IMAGE_URLS).map(([key, url]) => [`planet:${key}`, url]),
     ...Object.entries(SHIP_IMAGE_URLS).map(([key, url]) => [`ship:${key}`, url]),
   ];
+  let loaded = 0;
+  const total = entries.length;
+  onProgress?.({ loaded, total, progress: total > 0 ? loaded / total : 1 });
+
   await Promise.all(entries.map(async ([key, url]) => {
     const image = await loadImage(url);
     imageCache.set(key, image);
+    loaded += 1;
+    onProgress?.({ loaded, total, progress: total > 0 ? loaded / total : 1 });
   }));
 }
 

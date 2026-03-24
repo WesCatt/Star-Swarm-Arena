@@ -4,13 +4,35 @@ import os from 'node:os';
 import path from 'node:path';
 import url from 'node:url';
 import { Server } from 'socket.io';
-import { BALANCE, ITEM_TYPES } from '../js/config.js';
+import { BALANCE, ITEM_TYPES } from './shared/config.js';
 import {
   ONLINE_DRONE_BASE_CAP,
   ONLINE_DRONE_HEALTH,
   ONLINE_DRONE_PLANET_BONUS,
   ONLINE_DRONE_RADIUS,
   ONLINE_DRONE_SPEED,
+  ONLINE_REPAIR_COOLDOWN,
+  ONLINE_ARC_STRIKE_COOLDOWN,
+  ONLINE_ARC_HOLD_THRESHOLD,
+  ONLINE_ARC_CHARGE_MAX,
+  ONLINE_ARC_STRIKE_DAMAGE,
+  ONLINE_ARC_STRIKE_LENGTH,
+  ONLINE_ARC_STRIKE_ORBIT_RADIUS,
+  ONLINE_ARC_STRIKE_ORBIT_SPEED,
+  ONLINE_ARC_STRIKE_ORBIT_TURNS,
+  ONLINE_ARC_STRIKE_SPEED,
+  ONLINE_ARC_STRIKE_WIDTH,
+  ONLINE_ARC_ORB_BASE_COOLDOWN,
+  ONLINE_ARC_ORB_BONUS_COOLDOWN,
+  ONLINE_ARC_ORB_PAUSE,
+  ONLINE_ARC_ORB_HEAD_OFFSET,
+  ONLINE_ARC_ORB_MIN_RADIUS,
+  ONLINE_ARC_ORB_MAX_RADIUS,
+  ONLINE_ARC_ORB_MIN_SPEED,
+  ONLINE_ARC_ORB_MAX_SPEED,
+  ONLINE_ARC_ORB_MIN_DAMAGE,
+  ONLINE_ARC_ORB_MAX_DAMAGE,
+  ONLINE_ARC_ORB_MAX_TRAVEL,
   ONLINE_MAX_ENERGY,
   ONLINE_MAX_HEALTH,
   ONLINE_PLANET_LAYOUT,
@@ -22,7 +44,7 @@ import {
   ONLINE_WORLD,
   getOnlineSpawnPoint,
   getOnlineTheme,
-} from '../js/online-constants.js';
+} from './shared/online-constants.js';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -49,9 +71,31 @@ const rooms = new Map();
 let roomSequence = 1;
 let droneSequence = 1;
 let itemSequence = 1;
+let skillEffectSequence = 1;
+let pickupSequence = 1;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeAngle(angle) {
+  let wrapped = angle;
+  while (wrapped > Math.PI) wrapped -= Math.PI * 2;
+  while (wrapped < -Math.PI) wrapped += Math.PI * 2;
+  return wrapped;
+}
+
+function getStableMoveAngle(x, y, currentAngle = 0) {
+  const rawAngle = Math.atan2(y, x);
+  if (x >= -0.001 || Math.abs(y) > 0.12) {
+    return rawAngle;
+  }
+
+  const positivePi = Math.PI;
+  const negativePi = -Math.PI;
+  return Math.abs(normalizeAngle(positivePi - currentAngle)) <= Math.abs(normalizeAngle(negativePi - currentAngle))
+    ? positivePi
+    : negativePi;
 }
 
 function getLanAddress() {
@@ -131,9 +175,20 @@ function createShipState(theme, index) {
     droneCap: ONLINE_DRONE_BASE_CAP,
     respawnFrames: 0,
     boostBlend: 0,
+    turnSpeed: BALANCE.mothership.turnSpeed ?? 0.16,
+    turnAcceleration: BALANCE.mothership.turnAcceleration ?? 0.03,
+    turnDrag: BALANCE.mothership.turnDrag ?? 0.84,
+    angularVelocity: 0,
     spawnAccumulator: 0,
     buffs: [],
-    input: { x: 0, y: 0, boost: false },
+    repairCooldown: 0,
+    arcCooldown: 0,
+    arcHoldFrames: 0,
+    arcChargeLevel: 0,
+    repairFlash: 0,
+    repairHeld: false,
+    arcHeld: false,
+    input: { x: 0, y: 0, boost: false, repair: false, arc: false },
     botTargetId: null,
     botTargetType: null,
     botDecisionTimer: 0,
@@ -154,7 +209,9 @@ function createRoom() {
     drones: [],
     items: [],
     itemAccumulator: 0,
+    pickupEvents: [],
     delayedEffects: [],
+    skillEffects: [],
   };
 
   rooms.set(room.id, room);
@@ -212,12 +269,19 @@ function respawnShipNow(ship) {
   ship.health = ship.maxHealth;
   ship.energy = ship.maxEnergy;
   ship.boostBlend = 0;
+  ship.angularVelocity = 0;
   ship.spawnAccumulator = 0;
   ship.respawnFrames = 0;
   ship.botTargetId = null;
   ship.botTargetType = null;
   ship.botDecisionTimer = 0;
   ship.lastDamagedBy = null;
+  ship.repairHeld = false;
+  ship.arcHeld = false;
+  ship.arcHoldFrames = 0;
+  ship.arcChargeLevel = 0;
+  ship.repairFlash = 0;
+  ship.input = { x: 0, y: 0, boost: false, repair: false, arc: false };
 }
 
 function assignHumanToShip(room, ship, socket, sessionId) {
@@ -231,8 +295,12 @@ function assignHumanToShip(room, ship, socket, sessionId) {
   ship.isBot = false;
   ship.socketId = socket.id;
   ship.sessionId = sessionId || ship.sessionId;
-  ship.name = `${ship.callsign} Pilot`;
-  ship.input = { x: 0, y: 0, boost: false };
+  ship.name = ship.callsign + ' Pilot';
+  ship.input = { x: 0, y: 0, boost: false, repair: false, arc: false };
+  ship.repairHeld = false;
+  ship.arcHeld = false;
+  ship.arcHoldFrames = 0;
+  ship.arcChargeLevel = 0;
   if (ship.respawnFrames > 0 || ship.health <= 0) {
     respawnShipNow(ship);
   }
@@ -245,8 +313,12 @@ function releaseShipToBot(room, ship, { clearSession = false } = {}) {
   if (clearSession) {
     ship.sessionId = null;
   }
-  ship.name = `${ship.callsign} Bot`;
-  ship.input = { x: 0, y: 0, boost: false };
+  ship.name = ship.callsign + ' Bot';
+  ship.input = { x: 0, y: 0, boost: false, repair: false, arc: false };
+  ship.repairHeld = false;
+  ship.arcHeld = false;
+  ship.arcHoldFrames = 0;
+  ship.arcChargeLevel = 0;
   ship.botTargetId = null;
   ship.botTargetType = null;
   ship.botDecisionTimer = 0;
@@ -260,13 +332,294 @@ function pickOpenShip(room) {
 function normalizeInput(input = {}) {
   const x = Number.isFinite(input.x) ? input.x : 0;
   const y = Number.isFinite(input.y) ? input.y : 0;
+  const repair = Boolean(input.repair);
+  const arc = Boolean(input.arc);
   const length = Math.hypot(x, y);
   if (length > 1) {
-    return { x: x / length, y: y / length, boost: Boolean(input.boost) };
+    return { x: x / length, y: y / length, boost: Boolean(input.boost), repair, arc };
   }
-  return { x, y, boost: Boolean(input.boost) };
+  return { x, y, boost: Boolean(input.boost), repair, arc };
 }
 
+function decrementShipAbilityCooldowns(ship, tick) {
+  ship.repairCooldown = Math.max(0, ship.repairCooldown - tick);
+  ship.arcCooldown = Math.max(0, ship.arcCooldown - tick);
+  ship.repairFlash = Math.max(0, ship.repairFlash - tick);
+}
+
+function getAbilityCooldownMultiplier(ship) {
+  return getBuffMultiplier(ship, 'cooldownHaste', 1);
+}
+
+function activateRepairSkill(ship) {
+  if (ship.respawnFrames > 0 || ship.health <= 0 || ship.repairCooldown > 0) return false;
+  ship.health = ship.maxHealth;
+  ship.repairCooldown = ONLINE_REPAIR_COOLDOWN * getAbilityCooldownMultiplier(ship);
+  ship.repairFlash = 26;
+  return true;
+}
+
+function hasOwnedArcEffect(room, ownerSlotId) {
+  return room.skillEffects.some((effect) => effect.ownerSlotId === ownerSlotId);
+}
+
+function canActivateArcSkill(room, ship) {
+  return ship.respawnFrames <= 0 && ship.health > 0 && ship.arcCooldown <= 0 && !hasOwnedArcEffect(room, ship.slotId);
+}
+
+function findNearestArcTarget(room, ownerSlotId, x, y) {
+  let bestTarget = null;
+  let bestDistance = Infinity;
+  for (const ship of room.ships) {
+    if (ship.slotId === ownerSlotId || ship.respawnFrames > 0 || ship.health <= 0) continue;
+    const distance = Math.hypot(ship.x - x, ship.y - y);
+    if (distance >= bestDistance) continue;
+    bestDistance = distance;
+    bestTarget = ship;
+  }
+  return bestTarget;
+}
+
+function resolveArcTarget(room, ownerSlotId, effect) {
+  if (effect.targetSlotId) {
+    const current = room.ships.find((ship) => (
+      ship.slotId === effect.targetSlotId
+      && ship.slotId !== ownerSlotId
+      && ship.respawnFrames <= 0
+      && ship.health > 0
+    ));
+    if (current) return current;
+  }
+
+  const fallback = findNearestArcTarget(room, ownerSlotId, effect.x, effect.y);
+  effect.targetSlotId = fallback?.slotId || null;
+  return fallback;
+}
+
+function getArcChargeRatio(holdFrames) {
+  const chargeWindow = Math.max(1, ONLINE_ARC_CHARGE_MAX - ONLINE_ARC_HOLD_THRESHOLD);
+  return clamp((holdFrames - ONLINE_ARC_HOLD_THRESHOLD) / chargeWindow, 0, 1);
+}
+
+function getShipHeadPosition(ship, extraOffset = 0) {
+  const offset = ship.radius + extraOffset;
+  return {
+    x: ship.x + Math.cos(ship.angle) * offset,
+    y: ship.y + Math.sin(ship.angle) * offset,
+  };
+}
+
+function activateArcStrike(room, ship) {
+  if (!canActivateArcSkill(room, ship)) return false;
+
+  room.skillEffects.push({
+    id: 'arc-' + (skillEffectSequence++),
+    type: 'arc-strike',
+    ownerSlotId: ship.slotId,
+    phase: 'orbit',
+    angle: ship.angle,
+    orbitProgress: 0,
+    radius: ONLINE_ARC_STRIKE_ORBIT_RADIUS,
+    length: ONLINE_ARC_STRIKE_LENGTH,
+    width: ONLINE_ARC_STRIKE_WIDTH,
+    x: ship.x + Math.cos(ship.angle) * ONLINE_ARC_STRIKE_ORBIT_RADIUS,
+    y: ship.y + Math.sin(ship.angle) * ONLINE_ARC_STRIKE_ORBIT_RADIUS,
+    dx: Math.cos(ship.angle),
+    dy: Math.sin(ship.angle),
+    vx: 0,
+    vy: 0,
+    targetSlotId: null,
+    travel: 0,
+  });
+
+  ship.arcCooldown = ONLINE_ARC_STRIKE_COOLDOWN * getAbilityCooldownMultiplier(ship);
+  return true;
+}
+
+function activateChargedArcOrb(room, ship, holdFrames) {
+  if (!canActivateArcSkill(room, ship)) return false;
+
+  const chargeRatio = getArcChargeRatio(holdFrames);
+  const spawn = getShipHeadPosition(ship, ONLINE_ARC_ORB_HEAD_OFFSET);
+  const target = findNearestArcTarget(room, ship.slotId, spawn.x, spawn.y);
+  const orbRadius = ONLINE_ARC_ORB_MIN_RADIUS + (ONLINE_ARC_ORB_MAX_RADIUS - ONLINE_ARC_ORB_MIN_RADIUS) * chargeRatio;
+  const orbDamage = ONLINE_ARC_ORB_MIN_DAMAGE + (ONLINE_ARC_ORB_MAX_DAMAGE - ONLINE_ARC_ORB_MIN_DAMAGE) * chargeRatio;
+  const orbSpeed = ONLINE_ARC_ORB_MIN_SPEED + (ONLINE_ARC_ORB_MAX_SPEED - ONLINE_ARC_ORB_MIN_SPEED) * chargeRatio;
+  const cooldown = (ONLINE_ARC_ORB_BASE_COOLDOWN + ONLINE_ARC_ORB_BONUS_COOLDOWN * chargeRatio) * getAbilityCooldownMultiplier(ship);
+
+  room.skillEffects.push({
+    id: 'orb-' + (skillEffectSequence++),
+    type: 'arc-orb',
+    ownerSlotId: ship.slotId,
+    targetSlotId: target?.slotId || null,
+    phase: 'pause',
+    x: spawn.x,
+    y: spawn.y,
+    anchorX: spawn.x,
+    anchorY: spawn.y,
+    dx: Math.cos(ship.angle),
+    dy: Math.sin(ship.angle),
+    vx: 0,
+    vy: 0,
+    radius: orbRadius,
+    width: orbRadius * 0.8,
+    length: orbRadius * 2.2,
+    chargeRatio,
+    damage: orbDamage,
+    speed: orbSpeed,
+    pauseFrames: ONLINE_ARC_ORB_PAUSE,
+    hoverPhase: Math.random() * Math.PI * 2,
+    travel: 0,
+    maxTravel: ONLINE_ARC_ORB_MAX_TRAVEL,
+  });
+
+  ship.arcCooldown = cooldown;
+  return true;
+}
+
+function processShipAbilityInput(room, ship, tick) {
+  decrementShipAbilityCooldowns(ship, tick);
+  const wantsRepair = Boolean(ship.input.repair);
+  if (wantsRepair && !ship.repairHeld) {
+    activateRepairSkill(ship);
+  }
+  ship.repairHeld = wantsRepair;
+
+  const wantsArc = Boolean(ship.input.arc);
+  const wasHoldingArc = ship.arcHeld;
+  if (wantsArc && canActivateArcSkill(room, ship)) {
+    ship.arcHoldFrames = Math.min(ONLINE_ARC_CHARGE_MAX, (ship.arcHoldFrames || 0) + tick);
+    ship.arcChargeLevel = clamp(ship.arcHoldFrames / ONLINE_ARC_CHARGE_MAX, 0, 1);
+  } else if (!wantsArc) {
+    if (wasHoldingArc) {
+      if ((ship.arcHoldFrames || 0) >= ONLINE_ARC_HOLD_THRESHOLD) activateChargedArcOrb(room, ship, ship.arcHoldFrames || 0);
+      else if ((ship.arcHoldFrames || 0) > 0) activateArcStrike(room, ship);
+    }
+    ship.arcHoldFrames = 0;
+    ship.arcChargeLevel = 0;
+  } else {
+    ship.arcHoldFrames = 0;
+    ship.arcChargeLevel = 0;
+  }
+  ship.arcHeld = wantsArc;
+}
+
+function updateSkillEffects(room, tick) {
+  room.skillEffects = room.skillEffects.filter((effect) => {
+    const owner = room.ships.find((ship) => ship.slotId === effect.ownerSlotId);
+    if (!owner || owner.health <= 0 || owner.respawnFrames > 0) return false;
+
+    if (effect.type === 'arc-strike') {
+      if (effect.phase === 'orbit') {
+        effect.orbitProgress += ONLINE_ARC_STRIKE_ORBIT_SPEED * tick;
+        effect.angle += ONLINE_ARC_STRIKE_ORBIT_SPEED * tick;
+        effect.dx = Math.cos(effect.angle);
+        effect.dy = Math.sin(effect.angle);
+        effect.x = owner.x + effect.dx * effect.radius;
+        effect.y = owner.y + effect.dy * effect.radius;
+
+        if (effect.orbitProgress < Math.PI * 2 * ONLINE_ARC_STRIKE_ORBIT_TURNS) {
+          return true;
+        }
+
+        const target = findNearestArcTarget(room, owner.slotId, effect.x, effect.y);
+        if (!target) return false;
+
+        const distance = Math.hypot(target.x - effect.x, target.y - effect.y) || 1;
+        effect.phase = 'seek';
+        effect.targetSlotId = target.slotId;
+        effect.dx = (target.x - effect.x) / distance;
+        effect.dy = (target.y - effect.y) / distance;
+        effect.vx = effect.dx * ONLINE_ARC_STRIKE_SPEED;
+        effect.vy = effect.dy * ONLINE_ARC_STRIKE_SPEED;
+        effect.travel = 0;
+        return true;
+      }
+
+      effect.x += effect.vx * tick;
+      effect.y += effect.vy * tick;
+      effect.travel += Math.hypot(effect.vx, effect.vy) * tick;
+
+      const hitTarget = room.ships.find((ship) => (
+        ship.slotId !== owner.slotId
+        && ship.respawnFrames <= 0
+        && ship.health > 0
+        && Math.hypot(ship.x - effect.x, ship.y - effect.y) <= ship.radius + 18
+      ));
+
+      if (hitTarget) {
+        hitTarget.health = Math.max(0, hitTarget.health - ONLINE_ARC_STRIKE_DAMAGE);
+        hitTarget.lastDamagedBy = owner.slotId;
+        return false;
+      }
+
+      return (
+        effect.x > 0
+        && effect.x < ONLINE_WORLD.width
+        && effect.y > 0
+        && effect.y < ONLINE_WORLD.height
+      );
+    }
+
+    if (effect.type !== 'arc-orb') return false;
+
+    if (effect.phase === 'pause') {
+      effect.hoverPhase = (effect.hoverPhase || 0) + 0.22 * tick;
+      const sway = (4 + effect.chargeRatio * 8) * Math.sin(effect.hoverPhase);
+      const normalX = -(effect.dy || 0);
+      const normalY = effect.dx || 0;
+      effect.x = effect.anchorX + normalX * sway;
+      effect.y = effect.anchorY + normalY * sway;
+      effect.pauseFrames = Math.max(0, (effect.pauseFrames || 0) - tick);
+      if (effect.pauseFrames > 0) {
+        return true;
+      }
+      effect.phase = 'seek';
+    }
+
+    const target = resolveArcTarget(room, owner.slotId, effect);
+    if (target) {
+      const distance = Math.hypot(target.x - effect.x, target.y - effect.y) || 1;
+      const desiredDx = (target.x - effect.x) / distance;
+      const desiredDy = (target.y - effect.y) / distance;
+      const turnEase = 0.18 + effect.chargeRatio * 0.18;
+      const nextDx = effect.dx + (desiredDx - effect.dx) * turnEase;
+      const nextDy = effect.dy + (desiredDy - effect.dy) * turnEase;
+      const directionLength = Math.hypot(nextDx, nextDy) || 1;
+      effect.dx = nextDx / directionLength;
+      effect.dy = nextDy / directionLength;
+    }
+
+    effect.vx = effect.dx * effect.speed;
+    effect.vy = effect.dy * effect.speed;
+    effect.x += effect.vx * tick;
+    effect.y += effect.vy * tick;
+    effect.travel += Math.hypot(effect.vx, effect.vy) * tick;
+
+    const hitRadius = (effect.radius || 14) + 12;
+    const hitTarget = room.ships.find((ship) => (
+      ship.slotId !== owner.slotId
+      && ship.respawnFrames <= 0
+      && ship.health > 0
+      && Math.hypot(ship.x - effect.x, ship.y - effect.y) <= ship.radius + hitRadius
+    ));
+
+    if (hitTarget) {
+      hitTarget.health = Math.max(0, hitTarget.health - effect.damage);
+      hitTarget.lastDamagedBy = owner.slotId;
+      effect.targetSlotId = hitTarget.slotId;
+      return false;
+    }
+
+    return (
+      effect.travel < (effect.maxTravel || ONLINE_ARC_ORB_MAX_TRAVEL)
+      && effect.x > 0
+      && effect.x < ONLINE_WORLD.width
+      && effect.y > 0
+      && effect.y < ONLINE_WORLD.height
+    );
+  });
+}
 function pickRandomItemType() {
   return ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)] || ITEM_TYPES[0];
 }
@@ -467,6 +820,13 @@ function applyItemEffect(room, ship, item) {
         remaining: 3 * 60,
       });
       break;
+    case 'cooldown-haste': {
+      const duration = ITEM_TYPES.find((type) => type.id === item.typeId)?.duration || 6;
+      ship.repairCooldown *= 0.5;
+      ship.arcCooldown *= 0.5;
+      applyBuff(ship, 'cooldownHaste', 0.5, duration);
+      break;
+    }
     default:
       break;
   }
@@ -704,19 +1064,24 @@ function updateShipMotion(ship, tick) {
 
   const input = normalizeInput(ship.input);
   const moving = Math.hypot(input.x, input.y) > 0.08;
+  const hasUnlimitedPlayerBoost = !ship.isBot;
   const boostThreshold = ship.maxEnergy * 0.08;
-  const boosting = input.boost && moving && ship.energy > boostThreshold;
+  const boosting = input.boost && moving && (hasUnlimitedPlayerBoost || ship.energy > boostThreshold);
   const boostEase = 1 - Math.pow(1 - 0.18, tick);
   ship.boostBlend += ((boosting ? 1 : 0) - ship.boostBlend) * boostEase;
   ship.boostBlend = clamp(ship.boostBlend, 0, 1);
 
-  if (boosting) {
+  if (hasUnlimitedPlayerBoost) {
+    ship.energy = ship.maxEnergy;
+  } else if (boosting) {
     ship.energy = Math.max(0, ship.energy - 1.1 * tick);
   } else {
     ship.energy = Math.min(ship.maxEnergy, ship.energy + 0.5 * tick);
   }
 
-  if (ship.energy <= 0.5) {
+  if (hasUnlimitedPlayerBoost) {
+    ship.energy = ship.maxEnergy;
+  } else if (ship.energy <= 0.5) {
     ship.energy = 0;
     ship.boostBlend *= Math.pow(0.4, tick);
   } else if (ship.energy < boostThreshold) {
@@ -725,11 +1090,24 @@ function updateShipMotion(ship, tick) {
   }
 
   const driveMultiplier = getShipSpeedMultiplier(ship) * (1 + ship.boostBlend * 0.78);
-  if (Math.hypot(input.x, input.y) > 0.02) {
+  if (moving) {
     ship.vx += input.x * 0.2 * driveMultiplier * tick;
     ship.vy += input.y * 0.2 * driveMultiplier * tick;
-    ship.angle = Math.atan2(input.y, input.x);
+    const targetAngle = getStableMoveAngle(input.x, input.y, ship.angle);
+    const angleDelta = normalizeAngle(targetAngle - ship.angle);
+    const steerForce = clamp(
+      angleDelta * ship.turnAcceleration * driveMultiplier,
+      -ship.turnAcceleration * 2.2,
+      ship.turnAcceleration * 2.2,
+    );
+    ship.angularVelocity += steerForce * tick;
+    const maxTurn = ship.turnSpeed * driveMultiplier;
+    ship.angularVelocity = clamp(ship.angularVelocity, -maxTurn, maxTurn);
   }
+
+  ship.angle += ship.angularVelocity * tick;
+  ship.angularVelocity *= Math.pow(ship.turnDrag, tick);
+  ship.angle = normalizeAngle(ship.angle);
 
   ship.vx *= Math.pow(0.95, tick);
   ship.vy *= Math.pow(0.95, tick);
@@ -1092,6 +1470,11 @@ function resolveShipCollisions(room, tick) {
 }
 
 function updateItems(room, tick) {
+  room.pickupEvents = room.pickupEvents.filter((event) => {
+    event.life -= tick;
+    return event.life > 0;
+  });
+
   room.itemAccumulator += tick;
   if (room.itemAccumulator >= BALANCE.item.spawnRate && room.items.length < BALANCE.item.maxActive) {
     room.itemAccumulator = 0;
@@ -1112,6 +1495,13 @@ function updateItems(room, tick) {
     applyItemEffect(room, collector, item);
     collector.resources += 6;
     collector.score += 8;
+    room.pickupEvents.push({
+      id: `pickup-${pickupSequence++}`,
+      collectorSlotId: collector.slotId,
+      itemTypeId: item.typeId,
+      accent: ITEM_TYPES.find((type) => type.id === item.typeId)?.accent || '#d6d8de',
+      life: 48,
+    });
     return false;
   });
 }
@@ -1177,11 +1567,19 @@ function resolveKnockouts(room) {
     ship.vx = 0;
     ship.vy = 0;
     ship.boostBlend = 0;
+    ship.angularVelocity = 0;
     ship.spawnAccumulator = 0;
     ship.energy = 0;
     ship.buffs = [];
+    ship.repairFlash = 0;
+    ship.repairHeld = false;
+    ship.arcHeld = false;
+    ship.arcHoldFrames = 0;
+    ship.arcChargeLevel = 0;
+    ship.input = { x: 0, y: 0, boost: false, repair: false, arc: false };
     ship.resources = Math.max(12, ship.resources * 0.72);
     room.drones = room.drones.filter((drone) => drone.ownerSlotId !== ship.slotId);
+    room.skillEffects = room.skillEffects.filter((effect) => effect.ownerSlotId !== ship.slotId && effect.targetSlotId !== ship.slotId);
 
     const killer = room.ships.find((candidate) => candidate.slotId === ship.lastDamagedBy);
     if (killer) {
@@ -1205,9 +1603,11 @@ function stepRoom(room) {
   room.time += tickFactor;
   for (const ship of room.ships) {
     ship.input = ship.isBot ? chooseBotInput(room, ship) : normalizeInput(ship.input);
+    processShipAbilityInput(room, ship, tickFactor);
     updateShipMotion(ship, tickFactor);
   }
 
+  updateSkillEffects(room, tickFactor);
   updateDroneCaps(room);
   fillShipDroneSpawns(room);
   fillPlanetDroneSpawns(room, tickFactor);
@@ -1257,6 +1657,12 @@ function serializeSnapshot(room) {
       maxHealth: ship.maxHealth,
       energy: ship.energy,
       maxEnergy: ship.maxEnergy,
+      repairCooldown: ship.repairCooldown,
+      arcCooldown: ship.arcCooldown,
+      arcChargeLevel: ship.arcChargeLevel || 0,
+      arcHoldFrames: ship.arcHoldFrames || 0,
+      repairFlash: ship.repairFlash,
+      lastDamagedBy: ship.lastDamagedBy,
       resources: ship.resources,
       planets: ship.planets,
       eliminations: ship.eliminations,
@@ -1305,6 +1711,29 @@ function serializeSnapshot(room) {
       y: item.y,
       radius: item.radius,
       typeId: item.typeId,
+    })),
+    pickupEvents: room.pickupEvents.map((event) => ({
+      id: event.id,
+      collectorSlotId: event.collectorSlotId,
+      itemTypeId: event.itemTypeId,
+      accent: event.accent,
+    })),
+    skillEffects: room.skillEffects.map((effect) => ({
+      id: effect.id,
+      type: effect.type,
+      ownerSlotId: effect.ownerSlotId,
+      targetSlotId: effect.targetSlotId,
+      phase: effect.phase,
+      x: effect.x,
+      y: effect.y,
+      dx: effect.dx,
+      dy: effect.dy,
+      length: effect.length,
+      width: effect.width,
+      radius: effect.radius || 0,
+      chargeRatio: effect.chargeRatio || 0,
+      life: effect.life || 0,
+      maxLife: effect.maxLife || 0,
     })),
     leaderboard,
   };
@@ -1433,3 +1862,9 @@ httpServer.listen(port, host, () => {
   console.log(`Multiplayer server: http://localhost:${port}`);
   console.log(`LAN multiplayer:   http://${lanAddress}:${port}`);
 });
+
+
+
+
+
+

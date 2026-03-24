@@ -11,6 +11,10 @@ export class Controls {
       red: false,
       online: false,
     };
+    this.touchSkills = {
+      repair: false,
+      arc: false,
+    };
     this.touchState = {
       blue: this.createTouchSlot(),
       red: this.createTouchSlot(),
@@ -36,6 +40,8 @@ export class Controls {
     this.touchBoost.online = false;
     this.touchBoost.blue = false;
     this.touchBoost.red = false;
+    this.touchSkills.repair = false;
+    this.touchSkills.arc = false;
     this.touchState.blue = this.createTouchSlot();
     this.touchState.red = this.createTouchSlot();
     this.touchState.online = this.createTouchSlot();
@@ -57,28 +63,79 @@ export class Controls {
     this.canvas.addEventListener('touchend', (event) => this.handleTouchEnd(event), { passive: false });
     this.canvas.addEventListener('touchcancel', (event) => this.handleTouchEnd(event), { passive: false });
 
-    this.bindBoostButton('blue', document.getElementById('blue-boost-button'));
-    this.bindBoostButton('red', document.getElementById('red-boost-button'));
-    this.bindBoostButton('online', document.getElementById('online-boost-button'));
+    this.bindHoldButton(document.getElementById('blue-boost-button'), {
+      activate: () => {
+        this.touchBoost.blue = true;
+      },
+      deactivate: () => {
+        this.touchBoost.blue = false;
+      },
+    });
+    this.bindHoldButton(document.getElementById('red-boost-button'), {
+      activate: () => {
+        this.touchBoost.red = true;
+      },
+      deactivate: () => {
+        this.touchBoost.red = false;
+      },
+    });
+    this.bindHoldButton(document.getElementById('online-boost-button'), {
+      activate: () => {
+        this.touchBoost.online = true;
+      },
+      deactivate: () => {
+        this.touchBoost.online = false;
+      },
+    });
+    this.bindHoldButton(document.getElementById('online-repair-button'), {
+      activate: () => {
+        this.touchSkills.repair = true;
+      },
+      deactivate: () => {
+        this.touchSkills.repair = false;
+      },
+    });
+    this.bindHoldButton(document.getElementById('online-arc-button'), {
+      activate: () => {
+        this.touchSkills.arc = true;
+      },
+      deactivate: () => {
+        this.touchSkills.arc = false;
+      },
+    });
   }
 
-  bindBoostButton(team, element) {
+  bindHoldButton(element, handlers) {
     if (!element) return;
 
     const activate = (event) => {
       event.preventDefault();
-      this.touchBoost[team] = true;
+      element.classList.remove('tap-pulse');
+      void element.offsetWidth;
+      element.classList.add('tap-pulse');
+      if (element._tapPulseTimer) {
+        window.clearTimeout(element._tapPulseTimer);
+      }
+      element._tapPulseTimer = window.setTimeout(() => {
+        element.classList.remove('tap-pulse');
+        element._tapPulseTimer = null;
+      }, 520);
+      handlers.activate();
+      if (typeof element.setPointerCapture === 'function' && event.pointerId != null) {
+        element.setPointerCapture(event.pointerId);
+      }
     };
 
     const deactivate = (event) => {
       event.preventDefault();
-      this.touchBoost[team] = false;
+      handlers.deactivate();
     };
 
     element.addEventListener('pointerdown', activate);
     element.addEventListener('pointerup', deactivate);
     element.addEventListener('pointerleave', deactivate);
     element.addEventListener('pointercancel', deactivate);
+    element.addEventListener('lostpointercapture', deactivate);
   }
 
   handleTouchStart(event) {
@@ -187,6 +244,8 @@ export class Controls {
       x: vector.x,
       y: vector.y,
       boost: this.codes.has('Space') || this.touchBoost.online,
+      repair: this.keys.has('h') || this.touchSkills.repair,
+      arc: this.keys.has('k') || this.touchSkills.arc,
     };
   }
 
@@ -214,6 +273,8 @@ export class Controls {
     this.touchBoost.blue = false;
     this.touchBoost.red = false;
     this.touchBoost.online = false;
+    this.touchSkills.repair = false;
+    this.touchSkills.arc = false;
     this.touchState.blue = this.createTouchSlot();
     this.touchState.red = this.createTouchSlot();
     this.touchState.online = this.createTouchSlot();

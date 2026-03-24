@@ -8,6 +8,7 @@ import { Mothership } from './entities/mothership.js';
 import { Planet } from './entities/planet.js';
 import { NetworkClient } from './network-client.js';
 import {
+  ONLINE_CAMERA_VIEW,
   ONLINE_CHUNK_SIZE,
   ONLINE_WORLD,
   getOnlinePlanetTextureForOwner,
@@ -16,6 +17,36 @@ import {
 } from './online-constants.js';
 import { UI } from './ui.js';
 import { Vector2, clamp, distance, lerp, pick, rand } from './utils.js';
+
+function lerpAngle(from, to, amount) {
+  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  return from + delta * amount;
+}
+
+function normalizeAngle(angle) {
+  let wrapped = angle;
+  while (wrapped > Math.PI) wrapped -= Math.PI * 2;
+  while (wrapped < -Math.PI) wrapped += Math.PI * 2;
+  return wrapped;
+}
+
+function getStableMoveAngle(x, y, currentAngle = 0) {
+  const rawAngle = Math.atan2(y, x);
+  if (x >= -0.001 || Math.abs(y) > 0.12) {
+    return rawAngle;
+  }
+
+  const positivePi = Math.PI;
+  const negativePi = -Math.PI;
+  return Math.abs(normalizeAngle(positivePi - currentAngle)) <= Math.abs(normalizeAngle(negativePi - currentAngle))
+    ? positivePi
+    : negativePi;
+}
+
+function easeOutCubic(value) {
+  const t = clamp(value, 0, 1);
+  return 1 - ((1 - t) ** 3);
+}
 
 function hexToRgba(color, alpha = 1) {
   if (!color || typeof color !== 'string') return `rgba(255, 255, 255, ${alpha})`;
@@ -32,6 +63,10 @@ function hexToRgba(color, alpha = 1) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+const PLANET_IMPACT_FX_COOLDOWN_MS = 180;
+const ONLINE_LOCKED_TARGET_HOLD_FRAMES = 42;
+const ONLINE_LOCKED_TARGET_FADE_FRAMES = 24;
+
 export class Game {
   constructor(canvas, audio = null) {
     this.canvas = canvas;
@@ -44,9 +79,13 @@ export class Game {
     this.state = 'start';
     this.lastTime = performance.now();
     this.time = 0;
+    this.fpsSampleAt = 0;
+    this.fpsFrameCount = 0;
+    this.isCoarsePointer = false;
     this.stars = this.createStars();
     this.delayedEffects = [];
     this.particles = [];
+    this.localPlanetImpactFxAt = new WeakMap();
     this.online = {
       client: null,
       slotId: null,
@@ -56,6 +95,7 @@ export class Game {
       renderedPlanets: new Map(),
       renderedDrones: new Map(),
       renderedItems: new Map(),
+      renderedSkillEffects: new Map(),
       visualShips: new Map(),
       visualPlanets: new Map(),
       visualDrones: new Map(),
@@ -63,9 +103,10 @@ export class Game {
       backgroundChunks: new Map(),
       particles: [],
       inputTimer: 0,
-      lastInput: { x: 0, y: 0, boost: false },
+      lastInput: { x: 0, y: 0, boost: false, repair: false, arc: false },
       hudTimer: 0,
       rosterSignature: '',
+      planetImpactFxAt: new Map(),
     };
 
     this.ui.bindCallbacks({
@@ -99,10 +140,12 @@ export class Game {
 
   resize = () => {
     const deviceDpr = window.devicePixelRatio || 1;
-    const dpr = Math.min(deviceDpr, this.mode === 'online' ? 1.5 : 2);
     const viewport = window.visualViewport;
     const width = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
     const height = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+    this.isCoarsePointer = window.matchMedia?.('(hover: none) and (pointer: coarse)').matches || false;
+    const onlineDprCap = this.isMobilePerformanceMode() ? 1 : 1.5;
+    const dpr = Math.min(deviceDpr, this.mode === 'online' ? onlineDprCap : 2);
     this.viewportWidth = Math.round(width);
     this.viewportHeight = Math.round(height);
     this.canvas.width = Math.round(this.viewportWidth * dpr);
@@ -113,6 +156,21 @@ export class Game {
     this.ctx.imageSmoothingEnabled = true;
   };
 
+  isMobilePerformanceMode() {
+    return this.isCoarsePointer && this.mode === 'online';
+  }
+
+  isWithinBounds(entity, bounds, padding = 0) {
+    if (!bounds || !entity) return true;
+    const radius = (entity.radius || 0) + padding;
+    return !(
+      entity.x + radius < bounds.left
+      || entity.x - radius > bounds.right
+      || entity.y + radius < bounds.top
+      || entity.y - radius > bounds.bottom
+    );
+  }
+
   setupMatch() {
     this.blue = new Mothership('blue', 300, WORLD.height * 0.5);
     this.red = new Mothership('red', WORLD.width - 300, WORLD.height * 0.5);
@@ -121,6 +179,7 @@ export class Game {
     this.particles = [];
     this.delayedEffects = [];
     this.itemAccumulator = 0;
+    this.localPlanetImpactFxAt = new WeakMap();
     this.camera.resetShake();
 
     this.planets = [];
@@ -134,6 +193,7 @@ export class Game {
     for (const planet of this.planets) {
       planet.onDamaged = (damagedPlanet, team, info) => {
         if (info.willCapture) return;
+        if (!this.consumePlanetImpactFxCooldown(this.localPlanetImpactFxAt, damagedPlanet)) return;
         const accent = TEAM_COLORS[team]?.primary || TEAM_COLORS[damagedPlanet.pendingOwner || damagedPlanet.owner]?.primary || TEAM_COLORS.neutral.primary;
         const shockwave = this.getPlanetImpactShockwave(damagedPlanet, info.impactHeat);
         this.spawnShockwave(
@@ -176,10 +236,11 @@ export class Game {
     this.mode = 'online';
     this.resize();
     this.state = 'connecting';
+    this.online.planetImpactFxAt.clear();
     this.controls.reset();
     this.controls.setMode('online');
     this.camera.position.set(ONLINE_WORLD.width * 0.5, ONLINE_WORLD.height * 0.5);
-    this.camera.zoom = 0.78;
+    this.camera.zoom = this.getOnlineCameraTargetZoom();
     this.ui.showOnlineStatus();
     this.ensureOnlineClient();
   }
@@ -226,7 +287,7 @@ export class Game {
       onJoined: (payload) => {
         this.online.slotId = payload.slotId;
         this.ui.showOnlineStatus({
-          meta: `${payload.roomId} · ${payload.playerCount}/${payload.capacity}`,
+          meta: `${payload.roomId} 闂?${payload.playerCount}/${payload.capacity}`,
         });
       },
       onSnapshot: (payload) => {
@@ -246,20 +307,37 @@ export class Game {
 
   handleOnlineSnapshotEffects(previousSnapshot, nextSnapshot) {
     if (!previousSnapshot || !nextSnapshot) return;
+    const perfMode = this.isMobilePerformanceMode();
+    const effectBounds = perfMode ? this.getVisibleWorldBounds(ONLINE_WORLD) : null;
+    const previousShips = new Map(previousSnapshot.ships.map((entry) => [entry.slotId, entry]));
+    const previousPlanets = new Map(previousSnapshot.planets.map((entry) => [entry.id, entry]));
+    const nextDroneIds = new Set((nextSnapshot.drones || []).map((drone) => drone.id));
+    const nextItemIds = new Set((nextSnapshot.items || []).map((item) => item.id));
 
     for (const ship of nextSnapshot.ships) {
-      const prevShip = previousSnapshot.ships.find((entry) => entry.slotId === ship.slotId);
+      const prevShip = previousShips.get(ship.slotId);
       if (!prevShip) continue;
       const accent = ship.theme?.primary || TEAM_COLORS[ship.slotId]?.primary || '#ffffff';
+      const shipVisible = !perfMode
+        || ship.slotId === this.online.slotId
+        || this.isWithinBounds(ship, effectBounds, 220);
 
-      if (ship.health < prevShip.health - 0.9) {
+      if (shipVisible && ship.health < prevShip.health - 0.9) {
         this.spawnBurst(ship.x, ship.y, accent, 12, 1.35);
+        if (ship.lastDamagedBy === this.online.slotId && ship.slotId !== this.online.slotId) {
+          this.online.lockedTargetHud = {
+            slotId: ship.slotId,
+            holdFrames: ONLINE_LOCKED_TARGET_HOLD_FRAMES,
+            fadeFrames: ONLINE_LOCKED_TARGET_FADE_FRAMES,
+            fadeMax: ONLINE_LOCKED_TARGET_FADE_FRAMES,
+          };
+        }
         if (ship.slotId === this.online.slotId) {
           this.camera.shake(clamp((prevShip.health - ship.health) * 0.12, 2, 10), 5, { progressive: true });
         }
       }
 
-      if (prevShip.respawnFrames <= 0 && ship.respawnFrames > 0) {
+      if (shipVisible && prevShip.respawnFrames <= 0 && ship.respawnFrames > 0) {
         this.spawnBurst(prevShip.x, prevShip.y, accent, 34, 2.8);
         this.spawnShockwave(prevShip.x, prevShip.y, accent, ship.radius * 0.52, 1.55);
         if (ship.slotId === this.online.slotId) {
@@ -267,17 +345,19 @@ export class Game {
         }
       }
 
-      if (prevShip.respawnFrames > 0 && ship.respawnFrames <= 0) {
+      if (shipVisible && prevShip.respawnFrames > 0 && ship.respawnFrames <= 0) {
         this.spawnBurst(ship.x, ship.y, accent, 22, 1.8);
         this.spawnShockwave(ship.x, ship.y, accent, ship.radius * 0.36, 0.95);
       }
     }
 
     for (const planet of nextSnapshot.planets) {
-      const prevPlanet = previousSnapshot.planets.find((entry) => entry.id === planet.id);
+      const prevPlanet = previousPlanets.get(planet.id);
       if (!prevPlanet) continue;
+      const planetVisible = !perfMode || this.isWithinBounds(planet, effectBounds, 260);
 
-      if (planet.health < prevPlanet.health - 0.3 && planet.rebuildTimer <= 0) {
+      if (planetVisible && planet.health < prevPlanet.health - 0.3 && planet.rebuildTimer <= 0) {
+        if (!this.consumePlanetImpactFxCooldown(this.online.planetImpactFxAt, planet.id)) continue;
         const accent = planet.pendingOwnerSlotId
           ? TEAM_COLORS[planet.pendingOwnerSlotId]?.primary || '#d6d8de'
           : planet.ownerSlotId
@@ -296,7 +376,7 @@ export class Game {
         this.audio?.playPlanetImpact();
       }
 
-      if (prevPlanet.rebuildTimer <= 0 && planet.rebuildTimer > 0 && planet.pendingOwnerSlotId) {
+      if (planetVisible && prevPlanet.rebuildTimer <= 0 && planet.rebuildTimer > 0 && planet.pendingOwnerSlotId) {
         const accent = TEAM_COLORS[planet.pendingOwnerSlotId]?.primary || '#d6d8de';
         this.spawnBurst(planet.x, planet.y, accent, 42, 3.2);
         this.spawnShockwave(planet.x, planet.y, accent, planet.radius * 0.55, 2);
@@ -304,7 +384,7 @@ export class Game {
         this.audio?.playPlanetShatter();
       }
 
-      if (prevPlanet.rebuildTimer > 0 && planet.rebuildTimer <= 0 && planet.ownerSlotId) {
+      if (planetVisible && prevPlanet.rebuildTimer > 0 && planet.rebuildTimer <= 0 && planet.ownerSlotId) {
         const accent = TEAM_COLORS[planet.ownerSlotId]?.primary || '#d6d8de';
         this.spawnBurst(planet.x, planet.y, accent, 24, 1.8);
         this.spawnShockwave(planet.x, planet.y, accent, planet.radius * 0.28, 0.9);
@@ -312,15 +392,15 @@ export class Game {
     }
 
     for (const prevDrone of previousSnapshot.drones || []) {
-      const stillExists = (nextSnapshot.drones || []).some((drone) => drone.id === prevDrone.id);
-      if (stillExists) continue;
+      if (nextDroneIds.has(prevDrone.id)) continue;
+      if (perfMode && !this.isWithinBounds(prevDrone, effectBounds, 180)) continue;
       const accent = prevDrone.theme?.primary || TEAM_COLORS[prevDrone.ownerSlotId]?.primary || '#ffffff';
       this.spawnBurst(prevDrone.x, prevDrone.y, accent, 10, 1.1);
     }
 
     for (const prevItem of previousSnapshot.items || []) {
-      const stillExists = (nextSnapshot.items || []).some((item) => item.id === prevItem.id);
-      if (stillExists) continue;
+      if (nextItemIds.has(prevItem.id)) continue;
+      if (perfMode && !this.isWithinBounds(prevItem, effectBounds, 160)) continue;
       const type = this.getItemTypeById(prevItem.typeId);
       this.spawnBurst(prevItem.x, prevItem.y, type.accent, 14, 1.4);
       this.spawnShockwave(prevItem.x, prevItem.y, type.accent, prevItem.radius * 0.6, 0.7);
@@ -337,15 +417,17 @@ export class Game {
     this.online.renderedPlanets.clear();
     this.online.renderedDrones.clear();
     this.online.renderedItems.clear();
+    this.online.renderedSkillEffects.clear();
     this.online.visualShips.clear();
     this.online.visualPlanets.clear();
     this.online.visualDrones.clear();
     this.online.visualItems.clear();
     this.online.backgroundChunks.clear();
+    this.online.planetImpactFxAt.clear();
     this.online.particles = [];
     this.particles = [];
     this.online.inputTimer = 0;
-    this.online.lastInput = { x: 0, y: 0, boost: false };
+    this.online.lastInput = { x: 0, y: 0, boost: false, repair: false, arc: false };
     this.online.hudTimer = 0;
     this.online.rosterSignature = '';
   }
@@ -399,16 +481,21 @@ export class Game {
   }
 
   spawnBurst(x, y, color, count, scale = 1) {
-    for (let i = 0; i < count; i += 1) {
+    const perfScale = this.isMobilePerformanceMode() ? 0.55 : 1;
+    const burstCount = Math.max(3, Math.round(count * perfScale));
+    const speedScale = this.isMobilePerformanceMode() ? 0.82 : 1;
+    const sizeScale = this.isMobilePerformanceMode() ? 0.84 : 1;
+    const maxLife = this.isMobilePerformanceMode() ? 30 : 42;
+    for (let i = 0; i < burstCount; i += 1) {
       this.particles.push({
         type: 'spark',
         x,
         y,
-        vx: Math.cos((Math.PI * 2 * i) / count + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale,
-        vy: Math.sin((Math.PI * 2 * i) / count + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale,
-        life: rand(18, 42),
-        maxLife: 42,
-        size: rand(1.5, 4.5) * scale,
+        vx: Math.cos((Math.PI * 2 * i) / burstCount + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale * speedScale,
+        vy: Math.sin((Math.PI * 2 * i) / burstCount + rand(-0.4, 0.4)) * rand(0.4, 2.8) * scale * speedScale,
+        life: rand(14, maxLife),
+        maxLife,
+        size: rand(1.5, 4.5) * scale * sizeScale,
         color,
         drag: rand(0.9, 0.95),
       });
@@ -416,16 +503,17 @@ export class Game {
   }
 
   spawnShockwave(x, y, color, radius = 14, scale = 1) {
+    const perfScale = this.isMobilePerformanceMode() ? 0.82 : 1;
     this.particles.push({
       type: 'ring',
       x,
       y,
-      life: 20 * scale,
-      maxLife: 20 * scale,
+      life: 20 * scale * perfScale,
+      maxLife: 20 * scale * perfScale,
       size: radius,
       color,
-      growth: 5.5 * scale,
-      lineWidth: 3.5 * scale,
+      growth: 5.5 * scale * perfScale,
+      lineWidth: 3.5 * scale * (this.isMobilePerformanceMode() ? 0.8 : 1),
     });
   }
 
@@ -437,10 +525,19 @@ export class Game {
     };
   }
 
+  consumePlanetImpactFxCooldown(store, key, cooldownMs = PLANET_IMPACT_FX_COOLDOWN_MS) {
+    const lastAt = store.get(key) ?? -Infinity;
+    if (this.time - lastAt < cooldownMs) return false;
+    store.set(key, this.time);
+    return true;
+  }
+
   spawnShipTrail(ship, tick, targetParticles = this.particles, options = {}) {
     const {
       cap = 0,
       intensity = 1,
+      countScale = 1,
+      shockwave = true,
     } = options;
     const x = ship.pos?.x ?? ship.x ?? 0;
     const y = ship.pos?.y ?? ship.y ?? 0;
@@ -459,7 +556,7 @@ export class Game {
     const laneX = -Math.sin(angle);
     const laneY = Math.cos(angle);
     const plumePower = (1.4 + speed * 0.78 + boostIntensity * 4.4) * intensity;
-    const count = Math.min(10, Math.max(2, Math.round(plumePower * tick)));
+    const count = Math.min(10, Math.max(1, Math.round(plumePower * tick * countScale)));
     const speedCarry = 0.28 + boostIntensity * 0.12;
     const lifeBonus = boostIntensity * 10 + speed * 2.2;
     const teamColor = ship.color?.primary || TEAM_COLORS[ship.team]?.primary || TEAM_COLORS[ship.slotId]?.primary || '#ffffff';
@@ -489,7 +586,7 @@ export class Game {
       });
     }
 
-    if (boostIntensity > 0.28) {
+    if (shockwave && boostIntensity > 0.28) {
       const shockLife = rand(10, 16);
       targetParticles.push({
         type: 'spark',
@@ -539,8 +636,10 @@ export class Game {
     }
   }
 
-  updateParticles(tick) {
-    this.particles = this.particles.filter((particle) => {
+  updateParticleBuffer(buffer, tick, hardCap = 0) {
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < buffer.length; readIndex += 1) {
+      const particle = buffer[readIndex];
       particle.x += (particle.vx || 0) * tick;
       particle.y += (particle.vy || 0) * tick;
       if (particle.drag) {
@@ -549,8 +648,18 @@ export class Game {
       }
       if (particle.type === 'ring') particle.size += particle.growth * tick;
       particle.life -= tick;
-      return particle.life > 0;
-    });
+      if (particle.life <= 0) continue;
+      buffer[writeIndex] = particle;
+      writeIndex += 1;
+    }
+    buffer.length = writeIndex;
+    if (hardCap > 0 && buffer.length > hardCap) {
+      buffer.splice(0, buffer.length - hardCap);
+    }
+  }
+
+  updateParticles(tick) {
+    this.updateParticleBuffer(this.particles, tick, this.isMobilePerformanceMode() ? 90 : 280);
   }
 
   updateStart() {
@@ -679,6 +788,12 @@ export class Game {
   }
 
   syncOnlineRenderState(snapshot) {
+    const snapshotItems = snapshot.items || [];
+    const snapshotDrones = snapshot.drones || [];
+    const snapshotEffects = snapshot.skillEffects || [];
+    const activeDroneIds = new Set();
+    const activeItemIds = new Set();
+    const activeEffectIds = new Set();
     for (const ship of snapshot.ships) {
       const current = this.online.renderedShips.get(ship.slotId);
       if (!current) {
@@ -687,27 +802,55 @@ export class Game {
           targetX: ship.x,
           targetY: ship.y,
           targetAngle: ship.angle,
+          targetVx: ship.vx || 0,
+          targetVy: ship.vy || 0,
+          turnSpeed: BALANCE.mothership.turnSpeed ?? 0.16,
+          turnAcceleration: BALANCE.mothership.turnAcceleration ?? 0.03,
+          turnDrag: BALANCE.mothership.turnDrag ?? 0.84,
+          angularVelocity: 0,
         });
       } else {
-        Object.assign(current, ship, {
-          x: current.x,
-          y: current.y,
-          angle: current.angle,
-          targetX: ship.x,
-          targetY: ship.y,
-          targetAngle: ship.angle,
-        });
+        const isSelf = ship.slotId === this.online.slotId;
+        Object.assign(current, ship, isSelf
+          ? {
+            x: current.x,
+            y: current.y,
+            angle: current.angle,
+            vx: current.vx ?? ship.vx ?? 0,
+            vy: current.vy ?? ship.vy ?? 0,
+            targetX: ship.x,
+            targetY: ship.y,
+            targetAngle: ship.angle,
+            targetVx: ship.vx || 0,
+            targetVy: ship.vy || 0,
+            angularVelocity: current.angularVelocity ?? 0,
+            turnSpeed: current.turnSpeed ?? BALANCE.mothership.turnSpeed ?? 0.16,
+            turnAcceleration: current.turnAcceleration ?? BALANCE.mothership.turnAcceleration ?? 0.03,
+            turnDrag: current.turnDrag ?? BALANCE.mothership.turnDrag ?? 0.84,
+          }
+          : {
+            x: current.x,
+            y: current.y,
+            angle: current.angle,
+            targetX: ship.x,
+            targetY: ship.y,
+            targetAngle: ship.angle,
+            targetVx: ship.vx || 0,
+            targetVy: ship.vy || 0,
+          });
       }
     }
     for (const planet of snapshot.planets) {
       this.online.renderedPlanets.set(planet.id, { ...planet });
     }
 
-    for (const item of snapshot.items || []) {
+    for (const item of snapshotItems) {
+      activeItemIds.add(item.id);
       this.online.renderedItems.set(item.id, { ...item });
     }
 
-    for (const drone of snapshot.drones || []) {
+    for (const drone of snapshotDrones) {
+      activeDroneIds.add(drone.id);
       const current = this.online.renderedDrones.get(drone.id);
       if (!current) {
         this.online.renderedDrones.set(drone.id, {
@@ -728,23 +871,66 @@ export class Game {
       }
     }
 
-    for (const droneId of [...this.online.renderedDrones.keys()]) {
-      if (!(snapshot.drones || []).find((drone) => drone.id === droneId)) {
+    for (const effect of snapshotEffects) {
+      activeEffectIds.add(effect.id);
+      const current = this.online.renderedSkillEffects.get(effect.id);
+      if (!current) {
+        this.online.renderedSkillEffects.set(effect.id, {
+          ...effect,
+          targetX: effect.x,
+          targetY: effect.y,
+          transitionProgress: effect.type === 'arc-strike' && effect.phase === 'seek' ? 1 : 0,
+        });
+      } else {
+        if (effect.type === 'arc-strike' && current.phase !== effect.phase && effect.phase === 'seek') {
+          const owner = this.online.renderedShips.get(effect.ownerSlotId);
+          current.transitionProgress = 0;
+          current.transitionCenterX = owner?.x ?? current.x;
+          current.transitionCenterY = owner?.y ?? current.y;
+          current.transitionRadius = Math.max(
+            24,
+            Math.hypot((current.x ?? effect.x) - (owner?.x ?? current.x), (current.y ?? effect.y) - (owner?.y ?? current.y)),
+          );
+          current.transitionAngle = Math.atan2(
+            (current.y ?? effect.y) - (owner?.y ?? current.y),
+            (current.x ?? effect.x) - (owner?.x ?? current.x),
+          );
+        }
+        Object.assign(current, effect, {
+          x: current.x,
+          y: current.y,
+          targetX: effect.x,
+          targetY: effect.y,
+        });
+      }
+    }
+
+    for (const droneId of this.online.renderedDrones.keys()) {
+      if (!activeDroneIds.has(droneId)) {
         this.online.renderedDrones.delete(droneId);
       }
     }
 
-    for (const itemId of [...this.online.renderedItems.keys()]) {
-      if (!(snapshot.items || []).find((item) => item.id === itemId)) {
+    for (const itemId of this.online.renderedItems.keys()) {
+      if (!activeItemIds.has(itemId)) {
         this.online.renderedItems.delete(itemId);
       }
     }
 
-    this.syncOnlineVisuals();
+    for (const effectId of this.online.renderedSkillEffects.keys()) {
+      if (!activeEffectIds.has(effectId)) {
+        this.online.renderedSkillEffects.delete(effectId);
+      }
+    }
   }
-
   syncOnlineVisuals() {
+    const perfMode = this.isMobilePerformanceMode();
+    const syncBounds = perfMode ? this.getVisibleWorldBounds(ONLINE_WORLD) : null;
     for (const ship of this.online.renderedShips.values()) {
+      if (perfMode && ship.slotId !== this.online.slotId && !this.isWithinBounds(ship, syncBounds, 280)) {
+        this.online.visualShips.delete(ship.slotId);
+        continue;
+      }
       let visual = this.online.visualShips.get(ship.slotId);
       if (!visual) {
         visual = new Mothership(ship.slotId, ship.x, ship.y);
@@ -764,11 +950,15 @@ export class Game {
       visual.thrusterPulse += 0.18;
     }
 
-    for (const slotId of [...this.online.visualShips.keys()]) {
+    for (const slotId of this.online.visualShips.keys()) {
       if (!this.online.renderedShips.has(slotId)) this.online.visualShips.delete(slotId);
     }
 
     for (const planet of this.online.renderedPlanets.values()) {
+      if (perfMode && !this.isWithinBounds(planet, syncBounds, 360)) {
+        this.online.visualPlanets.delete(planet.id);
+        continue;
+      }
       let visual = this.online.visualPlanets.get(planet.id);
       if (!visual) {
         visual = new Planet(planet.x, planet.y, planet.radius);
@@ -796,11 +986,15 @@ export class Game {
       visual.pulse += 0.02;
     }
 
-    for (const planetId of [...this.online.visualPlanets.keys()]) {
+    for (const planetId of this.online.visualPlanets.keys()) {
       if (!this.online.renderedPlanets.has(planetId)) this.online.visualPlanets.delete(planetId);
     }
 
     for (const drone of this.online.renderedDrones.values()) {
+      if (perfMode && !this.isWithinBounds(drone, syncBounds, 180)) {
+        this.online.visualDrones.delete(drone.id);
+        continue;
+      }
       let visual = this.online.visualDrones.get(drone.id);
       if (!visual) {
         visual = new Drone(drone.ownerSlotId, drone.x, drone.y);
@@ -817,11 +1011,15 @@ export class Game {
       visual.color = TEAM_COLORS[drone.ownerSlotId];
     }
 
-    for (const droneId of [...this.online.visualDrones.keys()]) {
+    for (const droneId of this.online.visualDrones.keys()) {
       if (!this.online.renderedDrones.has(droneId)) this.online.visualDrones.delete(droneId);
     }
 
     for (const item of this.online.renderedItems.values()) {
+      if (perfMode && !this.isWithinBounds(item, syncBounds, 140)) {
+        this.online.visualItems.delete(item.id);
+        continue;
+      }
       let visual = this.online.visualItems.get(item.id);
       if (!visual) {
         visual = new Item(item.x, item.y, this.getItemTypeById(item.typeId));
@@ -833,56 +1031,159 @@ export class Game {
       visual.pulse += 0.05;
     }
 
-    for (const itemId of [...this.online.visualItems.keys()]) {
+    for (const itemId of this.online.visualItems.keys()) {
       if (!this.online.renderedItems.has(itemId)) this.online.visualItems.delete(itemId);
     }
   }
 
-  spawnOnlineShipTrail(ship, tick) {
+  spawnOnlineShipTrail(ship, tick, bounds = null) {
     if (ship.respawnFrames > 0) return;
+    if (this.isMobilePerformanceMode() && !this.isWithinBounds(ship, bounds, 180)) return;
     this.spawnShipTrail(ship, tick, this.online.particles, {
-      cap: 440,
-      intensity: 1.28,
+      cap: this.isMobilePerformanceMode() ? 80 : 300,
+      intensity: this.isMobilePerformanceMode() ? 0.68 : 1.08,
+      countScale: this.isMobilePerformanceMode() ? 0.3 : 1,
+      shockwave: !this.isMobilePerformanceMode(),
     });
   }
 
+  getOnlineShipSpeedMultiplier(ship) {
+    if (!(ship.buffs || []).some((buff) => buff.type === 'shipSpeed')) return 1;
+    return 1.5;
+  }
+
+  predictOnlineControlledShip(ship, input, tick) {
+    ship.turnSpeed ??= BALANCE.mothership.turnSpeed ?? 0.16;
+    ship.turnAcceleration ??= BALANCE.mothership.turnAcceleration ?? 0.03;
+    ship.turnDrag ??= BALANCE.mothership.turnDrag ?? 0.84;
+    ship.angularVelocity ??= 0;
+    ship.vx ??= 0;
+    ship.vy ??= 0;
+
+    const moving = Math.hypot(input.x, input.y) > 0.08;
+    const boosting = input.boost && moving;
+    const boostEase = 1 - Math.pow(1 - 0.18, tick);
+    ship.boostBlend = clamp((ship.boostBlend || 0) + ((boosting ? 1 : 0) - (ship.boostBlend || 0)) * boostEase, 0, 1);
+
+    const driveMultiplier = this.getOnlineShipSpeedMultiplier(ship) * (1 + ship.boostBlend * 0.78);
+    if (moving) {
+      ship.vx += input.x * 0.2 * driveMultiplier * tick;
+      ship.vy += input.y * 0.2 * driveMultiplier * tick;
+      const targetAngle = getStableMoveAngle(input.x, input.y, ship.angle || 0);
+      const angleDelta = normalizeAngle(targetAngle - (ship.angle || 0));
+      const steerForce = clamp(
+        angleDelta * ship.turnAcceleration * driveMultiplier,
+        -ship.turnAcceleration * 2.2,
+        ship.turnAcceleration * 2.2,
+      );
+      ship.angularVelocity += steerForce * tick;
+      const maxTurn = ship.turnSpeed * driveMultiplier;
+      ship.angularVelocity = clamp(ship.angularVelocity, -maxTurn, maxTurn);
+    }
+
+    ship.angle += ship.angularVelocity * tick;
+    ship.angularVelocity *= Math.pow(ship.turnDrag, tick);
+    ship.angle = normalizeAngle(ship.angle);
+    ship.vx *= Math.pow(0.95, tick);
+    ship.vy *= Math.pow(0.95, tick);
+
+    const speedLimit = 3.1 * driveMultiplier;
+    const speed = Math.hypot(ship.vx, ship.vy);
+    if (speed > speedLimit) {
+      ship.vx = (ship.vx / speed) * speedLimit;
+      ship.vy = (ship.vy / speed) * speedLimit;
+    }
+
+    ship.x = clamp(ship.x + ship.vx * tick, ship.radius, ONLINE_WORLD.width - ship.radius);
+    ship.y = clamp(ship.y + ship.vy * tick, ship.radius, ONLINE_WORLD.height - ship.radius);
+  }
+
+  reconcileOnlineControlledShip(ship) {
+    const errorX = (ship.targetX ?? ship.x) - ship.x;
+    const errorY = (ship.targetY ?? ship.y) - ship.y;
+    const errorDistance = Math.hypot(errorX, errorY);
+    const correction = errorDistance > 220 ? 0.24 : errorDistance > 90 ? 0.14 : 0.08;
+    ship.x += errorX * correction;
+    ship.y += errorY * correction;
+    ship.vx = lerp(ship.vx || 0, ship.targetVx ?? ship.vx ?? 0, correction * 0.85);
+    ship.vy = lerp(ship.vy || 0, ship.targetVy ?? ship.vy ?? 0, correction * 0.85);
+    ship.angle = normalizeAngle(lerpAngle(ship.angle, ship.targetAngle ?? ship.angle, correction * 0.45));
+  }
+
   updateOnlineParticles(tick) {
-    this.online.particles = this.online.particles.filter((particle) => {
-      particle.x += (particle.vx || 0) * tick;
-      particle.y += (particle.vy || 0) * tick;
-      if (particle.drag) {
-        particle.vx *= Math.pow(particle.drag, tick);
-        particle.vy *= Math.pow(particle.drag, tick);
-      }
-      particle.life -= tick;
-      return particle.life > 0;
-    });
+    this.updateParticleBuffer(this.online.particles, tick, this.isMobilePerformanceMode() ? 80 : 300);
   }
 
   updateOnline(delta) {
     const tick = Math.min(2.5, delta / (1000 / 60));
+    const input = this.controls.getOnlineInput();
     const snapshot = this.online.snapshot;
     if (snapshot) {
+      const perfMode = this.isMobilePerformanceMode();
+      const updateBounds = perfMode ? this.getVisibleWorldBounds(ONLINE_WORLD) : null;
       for (const ship of snapshot.ships) {
         const rendered = this.online.renderedShips.get(ship.slotId);
         if (!rendered) continue;
-        rendered.x = lerp(rendered.x, rendered.targetX ?? ship.x, 0.18);
-        rendered.y = lerp(rendered.y, rendered.targetY ?? ship.y, 0.18);
-        rendered.angle = lerp(rendered.angle, rendered.targetAngle ?? ship.angle, 0.18);
-        Object.assign(rendered, ship, {
-          x: rendered.x,
-          y: rendered.y,
-          angle: rendered.angle,
-          targetX: rendered.targetX ?? ship.x,
-          targetY: rendered.targetY ?? ship.y,
-          targetAngle: rendered.targetAngle ?? ship.angle,
-        });
-        this.spawnOnlineShipTrail(rendered, tick);
+        const isSelf = ship.slotId === this.online.slotId;
+        if (isSelf && rendered.respawnFrames <= 0) {
+          Object.assign(rendered, ship, {
+            x: rendered.x,
+            y: rendered.y,
+            angle: rendered.angle,
+            vx: rendered.vx ?? 0,
+            vy: rendered.vy ?? 0,
+            targetX: rendered.targetX ?? ship.x,
+            targetY: rendered.targetY ?? ship.y,
+            targetAngle: rendered.targetAngle ?? ship.angle,
+            targetVx: rendered.targetVx ?? ship.vx ?? 0,
+            targetVy: rendered.targetVy ?? ship.vy ?? 0,
+            angularVelocity: rendered.angularVelocity ?? 0,
+          });
+          this.predictOnlineControlledShip(rendered, input, tick);
+          this.reconcileOnlineControlledShip(rendered);
+        } else if (perfMode && !this.isWithinBounds(ship, updateBounds, 240)) {
+          Object.assign(rendered, ship, {
+            x: ship.x,
+            y: ship.y,
+            angle: ship.angle,
+            vx: ship.vx || 0,
+            vy: ship.vy || 0,
+            targetX: ship.x,
+            targetY: ship.y,
+            targetAngle: ship.angle,
+            targetVx: ship.vx || 0,
+            targetVy: ship.vy || 0,
+          });
+        } else {
+          rendered.x = lerp(rendered.x, rendered.targetX ?? ship.x, 0.18);
+          rendered.y = lerp(rendered.y, rendered.targetY ?? ship.y, 0.18);
+          rendered.angle = lerpAngle(rendered.angle, rendered.targetAngle ?? ship.angle, 0.18);
+          Object.assign(rendered, ship, {
+            x: rendered.x,
+            y: rendered.y,
+            angle: rendered.angle,
+            targetX: rendered.targetX ?? ship.x,
+            targetY: rendered.targetY ?? ship.y,
+            targetAngle: rendered.targetAngle ?? ship.angle,
+          });
+        }
+        this.spawnOnlineShipTrail(rendered, tick, updateBounds);
       }
 
       for (const drone of snapshot.drones || []) {
         const renderedDrone = this.online.renderedDrones.get(drone.id);
         if (!renderedDrone) continue;
+        if (perfMode && !this.isWithinBounds(drone, updateBounds, 180)) {
+          Object.assign(renderedDrone, drone, {
+            x: drone.x,
+            y: drone.y,
+            heading: drone.heading,
+            targetX: drone.x,
+            targetY: drone.y,
+            targetHeading: drone.heading,
+          });
+          continue;
+        }
         renderedDrone.x = lerp(renderedDrone.x, renderedDrone.targetX ?? drone.x, 0.35);
         renderedDrone.y = lerp(renderedDrone.y, renderedDrone.targetY ?? drone.y, 0.35);
         renderedDrone.heading = lerp(renderedDrone.heading, renderedDrone.targetHeading ?? drone.heading, 0.35);
@@ -896,22 +1197,61 @@ export class Game {
         });
       }
 
+      for (const effect of snapshot.skillEffects || []) {
+        const renderedEffect = this.online.renderedSkillEffects.get(effect.id);
+        if (!renderedEffect) continue;
+        if (effect.type !== 'arc-strike') {
+          Object.assign(renderedEffect, effect, {
+            x: effect.x,
+            y: effect.y,
+            targetX: effect.x,
+            targetY: effect.y,
+            transitionProgress: 0,
+          });
+          continue;
+        }
+        if (perfMode && !this.isWithinBounds(effect, updateBounds, 220)) {
+          Object.assign(renderedEffect, effect, {
+            x: effect.x,
+            y: effect.y,
+            targetX: effect.x,
+            targetY: effect.y,
+          });
+          renderedEffect.transitionProgress = effect.phase === 'seek' ? 1 : 0;
+          continue;
+        }
+        renderedEffect.x = lerp(renderedEffect.x, renderedEffect.targetX ?? effect.x, 0.32);
+        renderedEffect.y = lerp(renderedEffect.y, renderedEffect.targetY ?? effect.y, 0.32);
+        if (renderedEffect.phase === 'seek') {
+          renderedEffect.transitionProgress = Math.min(1, (renderedEffect.transitionProgress ?? 0) + tick / 18);
+        } else {
+          renderedEffect.transitionProgress = 0;
+        }
+        Object.assign(renderedEffect, effect, {
+          x: renderedEffect.x,
+          y: renderedEffect.y,
+          targetX: renderedEffect.targetX ?? effect.x,
+          targetY: renderedEffect.targetY ?? effect.y,
+        });
+      }
+
       this.updateParticles(tick);
       this.updateOnlineParticles(tick);
       this.syncOnlineVisuals();
       this.updateOnlineCamera(tick);
       this.online.hudTimer += delta;
-      if (this.online.hudTimer >= 120) {
+      if (this.online.hudTimer >= (perfMode ? 260 : 180)) {
         this.online.hudTimer = 0;
         this.ui.updateOnlineHud(snapshot, this.online.slotId);
       }
     }
 
     this.online.inputTimer += delta;
-    const input = this.controls.getOnlineInput();
     const changed = Math.abs(input.x - this.online.lastInput.x) > 0.02
       || Math.abs(input.y - this.online.lastInput.y) > 0.02
-      || input.boost !== this.online.lastInput.boost;
+      || input.boost !== this.online.lastInput.boost
+      || input.repair !== this.online.lastInput.repair
+      || input.arc !== this.online.lastInput.arc;
     if (this.online.client && (changed || this.online.inputTimer > 60)) {
       this.online.lastInput = { ...input };
       this.online.inputTimer = 0;
@@ -919,8 +1259,17 @@ export class Game {
         x: Number(input.x.toFixed(3)),
         y: Number(input.y.toFixed(3)),
         boost: input.boost,
+        repair: input.repair,
+        arc: input.arc,
       });
     }
+  }
+
+  getOnlineCameraTargetZoom() {
+    return Math.max(
+      this.viewportWidth / ONLINE_CAMERA_VIEW.width,
+      this.viewportHeight / ONLINE_CAMERA_VIEW.height,
+    );
   }
 
   updateOnlineCamera(tick) {
@@ -932,16 +1281,20 @@ export class Game {
     const focus = target.respawnFrames > 0 && target.slotId
       ? getOnlineSpawnPoint(Number.parseInt(target.slotId.split('-')[1], 10) - 1)
       : target;
-    this.camera.position.x = lerp(this.camera.position.x, focus.x, 1 - Math.pow(1 - 0.08, tick));
-    this.camera.position.y = lerp(this.camera.position.y, focus.y, 1 - Math.pow(1 - 0.08, tick));
-    this.camera.zoom = lerp(this.camera.zoom, 0.78, 1 - Math.pow(1 - 0.12, tick));
+    const followEase = 1 - Math.pow(1 - 0.2, tick);
+    this.camera.position.x = lerp(this.camera.position.x, focus.x, followEase);
+    this.camera.position.y = lerp(this.camera.position.y, focus.y, followEase);
+    this.camera.zoom = lerp(this.camera.zoom, this.getOnlineCameraTargetZoom(), 1 - Math.pow(1 - 0.12, tick));
     const halfWidth = this.viewportWidth / this.camera.zoom / 2;
     const halfHeight = this.viewportHeight / this.camera.zoom / 2;
+    const safeOffsetX = Math.max(36, halfWidth * 0.2);
+    const safeOffsetY = Math.max(36, halfHeight * 0.2);
+    this.camera.position.x = clamp(this.camera.position.x, focus.x - safeOffsetX, focus.x + safeOffsetX);
+    this.camera.position.y = clamp(this.camera.position.y, focus.y - safeOffsetY, focus.y + safeOffsetY);
     this.camera.position.x = clamp(this.camera.position.x, halfWidth, ONLINE_WORLD.width - halfWidth);
     this.camera.position.y = clamp(this.camera.position.y, halfHeight, ONLINE_WORLD.height - halfHeight);
     this.camera.updateShake(tick);
   }
-
   buildSnapshot() {
     return {
       blue: {
@@ -1070,7 +1423,9 @@ export class Game {
       ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
     }
 
-    for (const star of this.stars) {
+    const starStep = this.isMobilePerformanceMode() ? 3 : 1;
+    for (let index = 0; index < this.stars.length; index += starStep) {
+      const star = this.stars[index];
       const x = (star.x - this.camera.position.x) * star.depth * this.camera.zoom + this.viewportWidth * 0.5;
       const y = (star.y - this.camera.position.y) * star.depth * this.camera.zoom + this.viewportHeight * 0.5;
       if (x < -10 || x > this.viewportWidth + 10 || y < -10 || y > this.viewportHeight + 10) continue;
@@ -1169,7 +1524,13 @@ export class Game {
       }
       const visualShip = this.online.visualShips.get(ship.slotId);
       if (visualShip && ship.respawnFrames <= 0) {
+        if ((ship.arcChargeLevel || 0) > 0.02) {
+          this.drawOnlineArcCharge(ctx, ship);
+        }
         visualShip.draw(ctx);
+        if ((ship.repairFlash || 0) > 0) {
+          this.drawOnlineRepairFlash(ctx, ship);
+        }
         if (ship.slotId === this.online.slotId) {
           ctx.save();
           ctx.translate(ship.x, ship.y);
@@ -1187,12 +1548,307 @@ export class Game {
       }
     }
 
+    this.drawOnlineLockedTargetHud(ctx, bounds);
+    this.drawOnlineSkillEffects(ctx, bounds);
     this.renderOnlineRespawnIndicators(ctx, bounds);
     this.drawParticleLayer(ctx, this.particles, bounds);
     this.drawParticleLayer(ctx, this.online.particles, bounds);
     this.camera.restore(ctx);
   }
 
+  drawOnlineArcCharge(ctx, ship) {
+    const level = clamp(ship.arcChargeLevel || 0, 0, 1);
+    if (level <= 0) return;
+
+    const accent = ship.theme?.primary || TEAM_COLORS[ship.slotId]?.primary || '#8de0ff';
+    const orbCount = 2 + Math.round(level * 7);
+    const orbitRadius = ship.radius + 12 + level * 22;
+    const spin = this.time * (0.004 + level * 0.0035);
+
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.strokeStyle = hexToRgba(accent, 0.18 + level * 0.2);
+    ctx.lineWidth = 1.5 + level * 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, orbitRadius * (0.92 + level * 0.08), 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let index = 0; index < orbCount; index += 1) {
+      const angle = spin + (Math.PI * 2 * index) / orbCount;
+      const pulse = 0.82 + (Math.sin(spin * 3.4 + index * 1.7) + 1) * 0.12;
+      const x = Math.cos(angle) * orbitRadius * pulse;
+      const y = Math.sin(angle) * orbitRadius * pulse;
+      const size = 2.8 + level * 4.8 + (index % 2) * 0.7;
+      ctx.fillStyle = hexToRgba(accent, 0.22 + level * 0.2);
+      ctx.beginPath();
+      ctx.arc(x, y, size * 1.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  drawOnlineRepairFlash(ctx, ship) {
+    const accent = ship.theme?.primary || TEAM_COLORS[ship.slotId]?.primary || '#8de0ff';
+    const alpha = clamp((ship.repairFlash || 0) / 26, 0, 1);
+    const pulse = 1 + (1 - alpha) * 0.55;
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.strokeStyle = hexToRgba(accent, 0.92 * alpha);
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, (ship.radius + 18) * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = hexToRgba(accent, 0.22 * alpha);
+    ctx.lineWidth = 11;
+    ctx.beginPath();
+    ctx.arc(0, 0, (ship.radius + 18) * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawOnlineLockedTargetHud(ctx, bounds) {
+    let activeEffect = null;
+    for (const entry of this.online.renderedSkillEffects.values()) {
+      if ((entry.type === 'arc-strike' || entry.type === 'arc-orb') && entry.ownerSlotId === this.online.slotId && entry.targetSlotId) {
+        activeEffect = entry;
+        break;
+      }
+    }
+
+    let target = null;
+    let alpha = 1;
+
+    if (activeEffect) {
+      const activeTarget = this.online.renderedShips.get(activeEffect.targetSlotId);
+      if (activeTarget && activeTarget.respawnFrames <= 0 && activeTarget.health > 0) {
+        this.online.lockedTargetHud = {
+          slotId: activeTarget.slotId,
+          holdFrames: ONLINE_LOCKED_TARGET_HOLD_FRAMES,
+          fadeFrames: ONLINE_LOCKED_TARGET_FADE_FRAMES,
+          fadeMax: ONLINE_LOCKED_TARGET_FADE_FRAMES,
+        };
+        target = activeTarget;
+      }
+    }
+
+    if (!target && this.online.lockedTargetHud) {
+      const cached = this.online.lockedTargetHud;
+      const cachedTarget = this.online.renderedShips.get(cached.slotId);
+      if (!cachedTarget || cachedTarget.respawnFrames > 0 || cachedTarget.health <= 0) {
+        this.online.lockedTargetHud = null;
+        return;
+      }
+      if (cached.holdFrames > 0) cached.holdFrames -= 1;
+      else cached.fadeFrames = Math.max(0, cached.fadeFrames - 1);
+      if (cached.holdFrames <= 0 && cached.fadeFrames <= 0) {
+        this.online.lockedTargetHud = null;
+        return;
+      }
+      alpha = cached.holdFrames > 0 ? 1 : clamp(cached.fadeFrames / (cached.fadeMax || ONLINE_LOCKED_TARGET_FADE_FRAMES), 0, 1);
+      target = cachedTarget;
+    }
+
+    if (!target) return;
+    if (
+      target.x + target.radius < bounds.left
+      || target.x - target.radius > bounds.right
+      || target.y + target.radius < bounds.top
+      || target.y - target.radius > bounds.bottom
+    ) {
+      return;
+    }
+
+    const accent = target.theme?.primary || TEAM_COLORS[target.slotId]?.primary || '#ff8a7a';
+    const barWidth = 84;
+    const barHeight = 8;
+    const y = target.y - target.radius - 34;
+    const healthRatio = clamp(target.health / target.maxHealth, 0, 1);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(target.x, y);
+
+    ctx.fillStyle = 'rgba(5, 10, 16, 0.82)';
+    ctx.strokeStyle = hexToRgba(accent, 0.7);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.roundRect(-52, -20, 104, 16, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = hexToRgba(accent, 0.94);
+    ctx.font = '700 9px Trebuchet MS, Aptos, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`LOCK ${target.badge}`, 0, -9);
+
+    ctx.fillStyle = 'rgba(6, 12, 20, 0.9)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(-barWidth * 0.5, 0, barWidth, barHeight, 999);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.roundRect(-barWidth * 0.5, 0, Math.max(0, barWidth * healthRatio), barHeight, 999);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(247, 251, 255, 0.96)';
+    ctx.font = '700 10px Trebuchet MS, Aptos, sans-serif';
+    ctx.fillText(`${Math.ceil(target.health)}/${target.maxHealth}`, 0, 22);
+
+    ctx.strokeStyle = hexToRgba(accent, 0.92);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-target.radius - 10, 2);
+    ctx.lineTo(-target.radius - 3, 2);
+    ctx.moveTo(target.radius + 10, 2);
+    ctx.lineTo(target.radius + 3, 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+  drawOnlineSkillEffects(ctx, bounds) {
+    for (const effect of this.online.renderedSkillEffects.values()) {
+      const owner = this.online.renderedShips.get(effect.ownerSlotId);
+      const accent = owner?.theme?.primary || TEAM_COLORS[effect.ownerSlotId]?.primary || '#ffffff';
+
+      if (effect.type === 'arc-orb') {
+        const orbRadius = Math.max(10, effect.radius || effect.width || 12);
+        const tailLength = effect.phase === 'seek'
+          ? orbRadius * (2.6 + (effect.chargeRatio || 0) * 2.2)
+          : orbRadius * 1.3;
+        const tailX = effect.x - (effect.dx || 0) * tailLength;
+        const tailY = effect.y - (effect.dy || 0) * tailLength;
+        const minX = Math.min(effect.x, tailX) - orbRadius * 3;
+        const maxX = Math.max(effect.x, tailX) + orbRadius * 3;
+        const minY = Math.min(effect.y, tailY) - orbRadius * 3;
+        const maxY = Math.max(effect.y, tailY) + orbRadius * 3;
+        if (maxX < bounds.left || minX > bounds.right || maxY < bounds.top || minY > bounds.bottom) continue;
+
+        ctx.save();
+        ctx.globalAlpha = effect.phase === 'pause' ? 0.94 : 1;
+
+        if (effect.phase === 'seek') {
+          const trail = ctx.createLinearGradient(tailX, tailY, effect.x, effect.y);
+          trail.addColorStop(0, hexToRgba(accent, 0));
+          trail.addColorStop(0.45, hexToRgba(accent, 0.22));
+          trail.addColorStop(1, hexToRgba(accent, 0.92));
+          ctx.strokeStyle = trail;
+          ctx.lineCap = 'round';
+          ctx.lineWidth = orbRadius * 1.25;
+          ctx.shadowBlur = 18 + orbRadius * 1.6;
+          ctx.shadowColor = hexToRgba(accent, 0.58);
+          ctx.beginPath();
+          ctx.moveTo(tailX, tailY);
+          ctx.lineTo(effect.x, effect.y);
+          ctx.stroke();
+        }
+
+        ctx.translate(effect.x, effect.y);
+        const pulse = 0.9 + Math.sin(this.time * 0.015 + (effect.chargeRatio || 0) * Math.PI) * 0.08;
+        const glowRadius = orbRadius * (1.8 + (effect.phase === 'pause' ? 0.35 : 0));
+        ctx.fillStyle = hexToRgba(accent, 0.2);
+        ctx.beginPath();
+        ctx.arc(0, 0, glowRadius * pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (effect.phase === 'pause') {
+          ctx.strokeStyle = hexToRgba(accent, 0.42);
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.arc(0, 0, orbRadius * (1.8 + (effect.chargeRatio || 0) * 0.4), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur = 24 + orbRadius * 1.8;
+        ctx.shadowColor = hexToRgba(accent, 0.72);
+        ctx.fillStyle = hexToRgba(accent, 0.9);
+        ctx.beginPath();
+        ctx.arc(0, 0, orbRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+        ctx.beginPath();
+        ctx.arc(-orbRadius * 0.25, -orbRadius * 0.28, Math.max(2.5, orbRadius * 0.34), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+
+      if (!owner) continue;
+      const orbitRadius = Math.max(
+        24,
+        effect.phase === 'orbit'
+          ? Math.hypot(effect.x - owner.x, effect.y - owner.y)
+          : effect.transitionRadius || Math.hypot(effect.x - owner.x, effect.y - owner.y),
+      );
+      const maxRadius = effect.phase === 'orbit'
+        ? orbitRadius * 1.45
+        : Math.max(effect.length, orbitRadius * 1.3, 18);
+      if (
+        effect.x + maxRadius < bounds.left
+        || effect.x - maxRadius > bounds.right
+        || effect.y + maxRadius < bounds.top
+        || effect.y - maxRadius > bounds.bottom
+      ) {
+        continue;
+      }
+
+      const orbitAngle = Math.atan2(
+        effect.phase === 'orbit' ? effect.y - owner.y : effect.dy || 0,
+        effect.phase === 'orbit' ? effect.x - owner.x : effect.dx || 1,
+      );
+      const orbitSpan = Math.PI * 0.92;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.shadowBlur = effect.phase === 'seek' ? 26 : 18;
+      ctx.shadowColor = hexToRgba(accent, 0.72);
+      ctx.strokeStyle = hexToRgba(accent, effect.phase === 'seek' ? 0.96 : 0.82);
+      ctx.lineWidth = (effect.width || 6) + (effect.phase === 'seek' ? 1.4 : 0);
+      ctx.beginPath();
+      if (effect.phase === 'orbit') {
+        ctx.arc(owner.x, owner.y, orbitRadius, orbitAngle - orbitSpan, orbitAngle);
+      } else {
+        const transition = easeOutCubic(effect.transitionProgress ?? 1);
+        const transitionCenterX = effect.transitionCenterX ?? owner.x;
+        const transitionCenterY = effect.transitionCenterY ?? owner.y;
+        const transitionRadius = effect.transitionRadius || orbitRadius;
+        const transitionAngle = effect.transitionAngle ?? orbitAngle;
+        const orbitTailAngle = transitionAngle - orbitSpan;
+        const orbitMidAngle = transitionAngle - orbitSpan * 0.5;
+        const orbitTailX = transitionCenterX + Math.cos(orbitTailAngle) * transitionRadius;
+        const orbitTailY = transitionCenterY + Math.sin(orbitTailAngle) * transitionRadius;
+        const orbitControlX = transitionCenterX + Math.cos(orbitMidAngle) * transitionRadius * 1.28;
+        const orbitControlY = transitionCenterY + Math.sin(orbitMidAngle) * transitionRadius * 1.28;
+        const lineTailX = effect.x - (effect.dx || 0) * (effect.length || 110);
+        const lineTailY = effect.y - (effect.dy || 0) * (effect.length || 110);
+        const lineControlX = (lineTailX + effect.x) * 0.5;
+        const lineControlY = (lineTailY + effect.y) * 0.5;
+        const tailX = lerp(orbitTailX, lineTailX, transition);
+        const tailY = lerp(orbitTailY, lineTailY, transition);
+        const controlX = lerp(orbitControlX, lineControlX, transition);
+        const controlY = lerp(orbitControlY, lineControlY, transition);
+        ctx.moveTo(tailX, tailY);
+        ctx.quadraticCurveTo(controlX, controlY, effect.x, effect.y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.lineWidth = Math.max(2, (effect.width || 6) * 0.28);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, Math.max(3.2, (effect.width || 6) * 0.42), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
   renderOnlineRespawnIndicators(ctx, bounds) {
     for (const ship of this.online.renderedShips.values()) {
       if (ship.respawnFrames <= 0) continue;
@@ -1311,6 +1967,14 @@ export class Game {
   frame = (now) => {
     const delta = Math.min(48, now - this.lastTime);
     this.lastTime = now;
+    this.fpsFrameCount += 1;
+    if (!this.fpsSampleAt) this.fpsSampleAt = now;
+    if (now - this.fpsSampleAt >= 500) {
+      const fps = (this.fpsFrameCount * 1000) / (now - this.fpsSampleAt);
+      this.ui.setOnlineFps?.(fps);
+      this.fpsSampleAt = now;
+      this.fpsFrameCount = 0;
+    }
     this.update(delta);
     this.render();
     requestAnimationFrame(this.frame);

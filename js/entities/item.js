@@ -2,8 +2,10 @@ import { BALANCE, ITEM_TYPES } from '../config.js';
 import { drawItemIcon } from '../item-icons.js';
 import { Vector2, pick, rand } from '../utils.js';
 
+const LOCAL_ITEM_TYPES = ITEM_TYPES.filter((type) => type.id !== 'cooldown-haste');
+
 export class Item {
-  constructor(x, y, type = pick(ITEM_TYPES)) {
+  constructor(x, y, type = pick(LOCAL_ITEM_TYPES.length ? LOCAL_ITEM_TYPES : ITEM_TYPES)) {
     this.pos = new Vector2(x, y);
     this.radius = BALANCE.item.radius;
     this.type = type;
@@ -11,7 +13,7 @@ export class Item {
   }
 
   static random(x, y) {
-    return new Item(x, y, pick(ITEM_TYPES));
+    return new Item(x, y, pick(LOCAL_ITEM_TYPES.length ? LOCAL_ITEM_TYPES : ITEM_TYPES));
   }
 
   update(tick) {
@@ -41,6 +43,8 @@ export class Item {
       case 'autocapture':
         mothership.applyBuff('autocapture', { multiplier: 1, duration: this.type.duration });
         game.queueAutocapture(mothership.team, this.type.duration);
+        break;
+      case 'cooldown-haste':
         break;
       default:
         break;

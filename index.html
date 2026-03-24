@@ -22,6 +22,26 @@
     </div>
 
     <div class="ui-layer">
+      <section id="loading-screen" class="loading-screen" aria-live="polite">
+        <div class="loading-panel">
+          <div class="loading-flight-path" aria-hidden="true">
+            <div class="loading-flight-ring ring-blue">
+              <span class="loading-ship ship-blue"></span>
+            </div>
+            <div class="loading-flight-ring ring-red">
+              <span class="loading-ship ship-red"></span>
+            </div>
+            <div class="loading-flight-core"></div>
+          </div>
+          <p id="loading-kicker" class="loading-kicker">&#35831;&#31245;&#21518;</p>
+          <p id="loading-status" class="loading-status">&#27491;&#22312;&#32452;&#35013;&#39134;&#33337;&#20013;</p>
+          <div class="loading-bar-shell" aria-hidden="true">
+            <span id="loading-bar" class="loading-bar-fill"></span>
+          </div>
+          <div id="loading-percent" class="loading-progress">0%</div>
+        </div>
+      </section>
+
       <header id="top-hud" class="hud hidden" aria-live="polite">
         <section class="hud-panel blue">
           <div class="hud-panel-top">
@@ -88,17 +108,29 @@
             <label>Hull</label>
             <div class="online-bar-shell"><span id="online-health-bar" class="online-bar-fill health"></span></div>
           </div>
-          <div class="online-bar-group compact">
-            <label>Boost</label>
-            <div class="online-bar-shell"><span id="online-energy-bar" class="online-bar-fill energy"></span></div>
-          </div>
           <div class="online-player-stats compact">
             <span id="online-resource-text">Resources 0</span>
             <span id="online-planet-text">Planets 0</span>
             <span id="online-kill-text">Elims 0</span>
           </div>
+          <div class="online-skill-row">
+            <span id="online-skill-repair" class="online-skill-pill ready">H READY</span>
+            <span id="online-skill-arc" class="online-skill-pill ready">K READY</span>
+          </div>
+          <div id="online-target-lock" class="online-target-lock hidden">
+            <div class="online-target-copy">
+              <span class="online-target-label">K LOCK</span>
+              <span id="online-target-name" class="online-target-name">P2</span>
+            </div>
+            <div class="online-target-bar-shell">
+              <span id="online-target-health-bar" class="online-target-bar-fill"></span>
+            </div>
+            <span id="online-target-health-text" class="online-target-health-text">100 / 100</span>
+          </div>
         </div>
       </section>
+
+      <div id="online-room-indicator" class="online-room-indicator hidden" aria-live="polite">Room --</div>
 
       <section id="online-mobile-hud" class="online-mobile-hud hidden" aria-live="polite">
         <div id="online-mobile-card" class="online-mobile-card">
@@ -119,15 +151,25 @@
               <span>HP</span>
               <div class="online-bar-shell compact"><span id="online-mobile-health-bar" class="online-bar-fill health"></span></div>
             </div>
-            <div class="online-mobile-bar">
-              <span>BOOST</span>
-              <div class="online-bar-shell compact"><span id="online-mobile-energy-bar" class="online-bar-fill energy"></span></div>
-            </div>
           </div>
           <div class="online-mobile-stats compact">
             <span id="online-mobile-resource-text">R 0</span>
             <span id="online-mobile-planet-text">P 0</span>
             <span id="online-mobile-kill-text">K 0</span>
+          </div>
+          <div class="online-skill-row mobile">
+            <span id="online-mobile-skill-repair" class="online-skill-pill ready">H READY</span>
+            <span id="online-mobile-skill-arc" class="online-skill-pill ready">K READY</span>
+          </div>
+          <div id="online-mobile-target-lock" class="online-target-lock mobile hidden">
+            <div class="online-target-copy">
+              <span class="online-target-label">LOCK</span>
+              <span id="online-mobile-target-name" class="online-target-name">P2</span>
+            </div>
+            <div class="online-target-bar-shell">
+              <span id="online-mobile-target-health-bar" class="online-target-bar-fill"></span>
+            </div>
+            <span id="online-mobile-target-health-text" class="online-target-health-text">100 / 100</span>
           </div>
         </div>
       </section>
@@ -153,7 +195,7 @@
         <div id="red-pickup-notices" class="pickup-notice-stack red"></div>
       </div>
 
-      <section id="start-screen" class="screen visible">
+      <section id="start-screen" class="screen hidden">
         <div class="start-cinematic" aria-hidden="true">
           <div class="cinematic-darkness"></div>
           <div class="cinematic-stars"></div>
@@ -208,13 +250,7 @@
             </button>
           </div>
 
-          <div id="settings-panel" class="settings-panel">
-            <div class="settings-title">Mode Notes</div>
-            <div class="settings-row"><span>Local</span><strong>W A S D / Arrows</strong></div>
-            <div class="settings-row"><span>Online</span><strong>W A S D + Space</strong></div>
-            <div class="settings-row"><span>Mobile</span><strong>Left Move / Right Boost</strong></div>
-            <div class="settings-note">Online rooms hold 6 slots. Empty seats stay alive as bots, and new players inherit that bot's current resources.</div>
-          </div>
+
         </div>
       </section>
 
@@ -253,7 +289,15 @@
       <div class="touch-boost-controls" aria-hidden="true">
         <button id="blue-boost-button" class="touch-boost-button blue" type="button">BOOST</button>
         <button id="red-boost-button" class="touch-boost-button red" type="button">BOOST</button>
-        <button id="online-boost-button" class="touch-boost-button online" type="button">BOOST</button>
+        <button id="online-repair-button" class="touch-boost-button online online-skill-button repair" type="button" aria-label="Repair skill">
+          <span id="online-repair-label" class="touch-skill-label">H</span>
+          <span id="online-repair-cooldown" class="touch-skill-cooldown ready">READY</span>
+        </button>
+        <button id="online-arc-button" class="touch-boost-button online online-skill-button arc" type="button" aria-label="Arc strike skill">
+          <span id="online-arc-label" class="touch-skill-label">K</span>
+          <span id="online-arc-cooldown" class="touch-skill-cooldown ready">READY</span>
+        </button>
+        <button id="online-boost-button" class="touch-boost-button online online-main-button" type="button">BOOST</button>
       </div>
     </div>
   </main>
@@ -262,3 +306,4 @@
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>
+

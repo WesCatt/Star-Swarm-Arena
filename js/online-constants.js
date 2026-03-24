@@ -1,86 +1,57 @@
-export const ONLINE_ROOM_CAPACITY = 6;
-export const ONLINE_WORLD = {
-  width: 2600,
-  height: 1800,
-};
-
-export const ONLINE_SOCKET_PORT = 3001;
-export const ONLINE_SHIP_RADIUS = 28;
-export const ONLINE_MAX_HEALTH = 100;
-export const ONLINE_MAX_ENERGY = 100;
-export const ONLINE_CHUNK_SIZE = 512;
-export const ONLINE_DRONE_RADIUS = 8;
-export const ONLINE_DRONE_HEALTH = 30;
-export const ONLINE_DRONE_SPEED = 2.8;
-export const ONLINE_DRONE_BASE_CAP = 30;
-export const ONLINE_DRONE_PLANET_BONUS = 10;
-export const ONLINE_SHIP_DRONE_SPAWN_RATE = 30;
-export const ONLINE_PLANET_DRONE_SPAWN_RATE = 240;
-
-export const ONLINE_SLOT_THEMES = [
-  { slotId: 'slot-1', badge: 'P1', callsign: 'Azure', primary: '#4fd4ff', secondary: '#0f6cdd', glow: 'rgba(79, 212, 255, 0.28)' },
-  { slotId: 'slot-2', badge: 'P2', callsign: 'Ember', primary: '#ff8a7a', secondary: '#e14d55', glow: 'rgba(255, 138, 122, 0.28)' },
-  { slotId: 'slot-3', badge: 'P3', callsign: 'Solar', primary: '#ffd36f', secondary: '#d6861b', glow: 'rgba(255, 211, 111, 0.26)' },
-  { slotId: 'slot-4', badge: 'P4', callsign: 'Mint', primary: '#7cffd8', secondary: '#14b88e', glow: 'rgba(124, 255, 216, 0.24)' },
-  { slotId: 'slot-5', badge: 'P5', callsign: 'Nova', primary: '#8fb7ff', secondary: '#4268ff', glow: 'rgba(143, 183, 255, 0.26)' },
-  { slotId: 'slot-6', badge: 'P6', callsign: 'Flare', primary: '#ffb46b', secondary: '#ff6d3a', glow: 'rgba(255, 180, 107, 0.26)' },
-];
-
-export const ONLINE_PLANET_LAYOUT = [
-  { id: 'planet-a', x: 430, y: 430, radius: 72 },
-  { id: 'planet-b', x: 1300, y: 280, radius: 66 },
-  { id: 'planet-c', x: 2170, y: 430, radius: 72 },
-  { id: 'planet-d', x: 560, y: 930, radius: 70 },
-  { id: 'planet-e', x: 1300, y: 900, radius: 86 },
-  { id: 'planet-f', x: 2040, y: 930, radius: 70 },
-  { id: 'planet-g', x: 430, y: 1420, radius: 72 },
-  { id: 'planet-h', x: 1300, y: 1540, radius: 68 },
-  { id: 'planet-i', x: 2170, y: 1420, radius: 72 },
-];
-
-export const ONLINE_SHIP_TEXTURES = {
-  'slot-1': 'online-1',
-  'slot-2': 'online-2',
-  'slot-3': 'online-3',
-  'slot-4': 'online-4',
-  'slot-5': 'online-5',
-  'slot-6': 'online-6',
-};
-
-export const ONLINE_PLANET_TEXTURES = [
-  'online-1',
-  'online-2',
-  'online-3',
-  'online-4',
-  'online-5',
-  'online-6',
-  'online-7',
-  'online-8',
-  'online-9',
-];
-
-export const ONLINE_OWNER_PLANET_TEXTURES = {
-  'slot-1': 'online-1',
-  'slot-2': 'online-2',
-  'slot-3': 'online-3',
-  'slot-4': 'online-4',
-  'slot-5': 'online-5',
-  'slot-6': 'online-6',
-};
-
-export function getOnlineTheme(slotId) {
-  return ONLINE_SLOT_THEMES.find((theme) => theme.slotId === slotId) || ONLINE_SLOT_THEMES[0];
-}
-
-export function getOnlinePlanetTextureForOwner(slotId) {
-  return ONLINE_OWNER_PLANET_TEXTURES[slotId] || 'base';
-}
-
-export function getOnlineSpawnPoint(index) {
-  const angle = (-Math.PI / 2) + (Math.PI * 2 * index) / ONLINE_ROOM_CAPACITY;
-  const radius = 560;
-  return {
-    x: ONLINE_WORLD.width * 0.5 + Math.cos(angle) * radius,
-    y: ONLINE_WORLD.height * 0.5 + Math.sin(angle) * radius,
-  };
-}
+export {
+  ONLINE_ROOM_CAPACITY,
+  ONLINE_WORLD,
+  ONLINE_CAMERA_VIEW,
+  ONLINE_SOCKET_PORT,
+  ONLINE_SHIP_RADIUS,
+  ONLINE_MAX_HEALTH,
+  ONLINE_MAX_ENERGY,
+  ONLINE_CHUNK_SIZE,
+  ONLINE_DRONE_RADIUS,
+  ONLINE_DRONE_HEALTH,
+  ONLINE_DRONE_SPEED,
+  ONLINE_DRONE_BASE_CAP,
+  ONLINE_DRONE_PLANET_BONUS,
+  ONLINE_SHIP_DRONE_SPAWN_RATE,
+  ONLINE_PLANET_DRONE_SPAWN_RATE,
+  ONLINE_REPAIR_COOLDOWN,
+  ONLINE_ARC_STRIKE_COOLDOWN,
+  ONLINE_ARC_HOLD_THRESHOLD,
+  ONLINE_ARC_CHARGE_MAX,
+  ONLINE_ARC_STRIKE_ORBIT_TURNS,
+  ONLINE_ARC_STRIKE_ORBIT_SPEED,
+  ONLINE_ARC_STRIKE_ORBIT_RADIUS,
+  ONLINE_ARC_STRIKE_LENGTH,
+  ONLINE_ARC_STRIKE_WIDTH,
+  ONLINE_ARC_STRIKE_SPEED,
+  ONLINE_ARC_STRIKE_DAMAGE,
+  ONLINE_ARC_STRIKE_MAX_TRAVEL,
+  ONLINE_ARC_LASER_BASE_COOLDOWN,
+  ONLINE_ARC_LASER_BONUS_COOLDOWN,
+  ONLINE_ARC_LASER_MIN_LENGTH,
+  ONLINE_ARC_LASER_MAX_LENGTH,
+  ONLINE_ARC_LASER_MIN_WIDTH,
+  ONLINE_ARC_LASER_MAX_WIDTH,
+  ONLINE_ARC_LASER_MIN_DAMAGE,
+  ONLINE_ARC_LASER_MAX_DAMAGE,
+  ONLINE_ARC_LASER_LIFE,
+  ONLINE_ARC_ORB_BASE_COOLDOWN,
+  ONLINE_ARC_ORB_BONUS_COOLDOWN,
+  ONLINE_ARC_ORB_PAUSE,
+  ONLINE_ARC_ORB_HEAD_OFFSET,
+  ONLINE_ARC_ORB_MIN_RADIUS,
+  ONLINE_ARC_ORB_MAX_RADIUS,
+  ONLINE_ARC_ORB_MIN_SPEED,
+  ONLINE_ARC_ORB_MAX_SPEED,
+  ONLINE_ARC_ORB_MIN_DAMAGE,
+  ONLINE_ARC_ORB_MAX_DAMAGE,
+  ONLINE_ARC_ORB_MAX_TRAVEL,
+  ONLINE_SLOT_THEMES,
+  ONLINE_PLANET_LAYOUT,
+  ONLINE_SHIP_TEXTURES,
+  ONLINE_PLANET_TEXTURES,
+  ONLINE_OWNER_PLANET_TEXTURES,
+  getOnlineTheme,
+  getOnlinePlanetTextureForOwner,
+  getOnlineSpawnPoint,
+} from '../backend/shared/online-constants.js';
