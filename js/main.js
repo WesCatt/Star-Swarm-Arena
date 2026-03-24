@@ -9,6 +9,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const game = new Game(canvas, audio);
   const appShell = document.querySelector('.app-shell');
   const startButton = document.getElementById('start-button');
+  const onlineButton = document.getElementById('settings-button');
   audio.attachButton(document.getElementById('audio-button'));
 
   const syncViewportVars = () => {
@@ -31,6 +32,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.visualViewport?.addEventListener('resize', syncViewportVars);
   window.visualViewport?.addEventListener('scroll', syncViewportVars);
   startButton?.addEventListener('click', tryEnterFullscreen, { passive: true });
+  onlineButton?.addEventListener('click', tryEnterFullscreen, { passive: true });
 
   const unlockAudio = async () => {
     await audio.ensureStarted();

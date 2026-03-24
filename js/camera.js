@@ -36,6 +36,10 @@ export class Camera {
     this.position.x = clamp(this.position.x, halfWidth, WORLD.width - halfWidth);
     this.position.y = clamp(this.position.y, halfHeight, WORLD.height - halfHeight);
 
+    this.updateShake(tick);
+  }
+
+  updateShake(tick = 1) {
     this.impactShakeMultiplier = Math.max(0, this.impactShakeMultiplier - 0.03 * tick);
 
     if (this.shakeTime > 0 || this.shakeStrength > 0.01) {

@@ -2837,3 +2837,362 @@ button {
     transform: translateY(0);
   }
 }
+
+.online-hud {
+  position: absolute;
+  inset: max(14px, env(safe-area-inset-top)) auto auto max(14px, env(safe-area-inset-left));
+  z-index: 4;
+  width: min(300px, calc(100vw - 28px));
+  pointer-events: none;
+}
+
+.online-player-card,
+.online-mobile-card,
+.online-status-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--online-accent, #4fd4ff) 28%, rgba(220, 234, 255, 0.12));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%),
+    rgba(5, 10, 16, 0.76);
+  backdrop-filter: blur(18px) saturate(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 46px rgba(0, 0, 0, 0.28);
+}
+
+.online-player-card {
+  padding: 12px 12px 10px;
+}
+
+.online-player-head,
+.online-mobile-head,
+.online-player-topline,
+.online-mobile-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-player-head.compact {
+  gap: 10px;
+}
+
+.online-player-topline,
+.online-mobile-topline {
+  justify-content: space-between;
+}
+
+.online-avatar-frame {
+  flex: 0 0 54px;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.2), transparent 34%),
+    color-mix(in srgb, var(--online-accent, #4fd4ff) 14%, rgba(6, 12, 20, 0.94));
+  border: 1px solid color-mix(in srgb, var(--online-accent, #4fd4ff) 36%, rgba(255, 255, 255, 0.1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.online-avatar-frame.mobile {
+  flex-basis: 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.online-player-avatar {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  transform: rotate(90deg);
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.28));
+}
+
+.online-player-copy,
+.online-mobile-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.online-player-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: #f7fbff;
+  font: 700 0.64rem/1 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.08em;
+  background: color-mix(in srgb, var(--online-accent, #4fd4ff) 26%, rgba(255, 255, 255, 0.06));
+  border: 1px solid color-mix(in srgb, var(--online-accent, #4fd4ff) 44%, rgba(255, 255, 255, 0.12));
+}
+
+.online-player-name {
+  min-width: 0;
+  font: 700 0.92rem/1.1 var(--font-ui);
+  color: #f7fbff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.online-player-room,
+.online-mobile-name,
+.online-status-meta {
+  margin-top: 2px;
+  color: rgba(214, 226, 238, 0.74);
+  font: 0.66rem/1.35 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.05em;
+}
+
+.online-mobile-name {
+  color: rgba(247, 251, 255, 0.88);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.online-bar-group.compact {
+  margin-top: 10px;
+}
+
+.online-bar-group {
+  margin-top: 12px;
+}
+
+.online-bar-group label,
+.online-mobile-bar > span,
+.online-card-title {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--gold);
+  font: 700 0.54rem/1.2 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.online-bar-shell {
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.online-bar-shell.compact {
+  padding: 2px;
+}
+
+.online-bar-fill {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border-radius: inherit;
+}
+
+.online-bar-fill.health {
+  background: linear-gradient(90deg, #93efff 0%, #2ab2ff 54%, #0f6cdd 100%);
+}
+
+.online-bar-fill.energy {
+  background: linear-gradient(90deg, #fff0a2 0%, #ffd36f 45%, #ff8d43 100%);
+}
+
+.online-player-stats,
+.online-mobile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.online-player-stats span,
+.online-mobile-stats span,
+.online-status-meta {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(237, 244, 251, 0.86);
+  font: 0.62rem/1.2 "Trebuchet MS", sans-serif;
+}
+
+.online-player-stats.compact span,
+.online-mobile-stats.compact span {
+  min-width: 0;
+}
+
+.online-mobile-hud {
+  position: absolute;
+  inset: max(8px, env(safe-area-inset-top)) auto auto max(8px, env(safe-area-inset-left));
+  z-index: 5;
+  display: none;
+  width: min(230px, calc(100vw - 16px));
+  pointer-events: none;
+}
+
+.online-menu-button {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  z-index: 6;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 102px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
+    rgba(5, 10, 16, 0.8);
+  color: #f7fbff;
+  font: 700 0.74rem/1 "Trebuchet MS", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 16px 34px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+}
+
+.online-menu-button:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.online-menu-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  padding:
+    max(18px, env(safe-area-inset-top))
+    max(18px, env(safe-area-inset-right))
+    max(18px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  background: rgba(2, 6, 10, 0.54);
+  backdrop-filter: blur(10px);
+}
+
+.online-menu-dialog {
+  width: min(420px, calc(100vw - 36px));
+  padding: 24px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 34%),
+    rgba(5, 10, 16, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 24px 60px rgba(0, 0, 0, 0.34);
+  text-align: center;
+  animation: victoryPanelReveal 180ms ease forwards;
+}
+
+.online-menu-dialog .eyebrow {
+  margin-bottom: 10px;
+}
+
+.online-menu-dialog h2 {
+  margin: 0;
+  color: #f7fbff;
+  font: 700 clamp(1.5rem, 3vw, 2rem)/1.02 var(--font-display);
+}
+
+.online-menu-dialog .subtitle {
+  margin: 12px 0 0;
+}
+
+.online-menu-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.online-mobile-card {
+  padding: 9px 10px 8px;
+}
+
+.online-mobile-bars {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.online-mobile-bar {
+  min-width: 0;
+}
+
+.online-status-panel {
+  width: min(540px, calc(100vw - 28px));
+  padding: 28px;
+  text-align: center;
+}
+
+.app-shell[data-mode="local"] .touch-boost-button.online,
+.app-shell[data-mode="online"] .touch-boost-button.blue,
+.app-shell[data-mode="online"] .touch-boost-button.red {
+  display: none !important;
+}
+
+.touch-boost-button.online {
+  margin-left: auto;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.22), transparent 34%),
+    radial-gradient(circle, rgba(91, 228, 213, 0.26) 0%, rgba(18, 66, 68, 0.88) 68%, rgba(7, 24, 26, 0.98) 100%);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .online-hud {
+    display: none;
+  }
+
+  .online-mobile-hud {
+    display: block;
+  }
+
+  .online-menu-button {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    min-width: 88px;
+    height: 38px;
+    padding: 0 14px;
+    font-size: 0.68rem;
+  }
+
+  .online-menu-dialog {
+    width: min(360px, calc(100vw - 24px));
+    padding: 18px;
+  }
+
+  .online-menu-actions {
+    flex-direction: column;
+  }
+
+  .app-shell[data-mode="online"] .touch-boost-controls {
+    inset: 0;
+    padding: 0 max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) 0;
+    justify-content: flex-end;
+    align-items: flex-end;
+  }
+
+  .app-shell[data-mode="online"] .touch-boost-button.online {
+    position: absolute;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom))  ;
+    min-width: 88px;
+    height: 88px;
+  }
+}

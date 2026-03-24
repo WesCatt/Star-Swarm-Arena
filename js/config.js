@@ -25,6 +25,42 @@ export const TEAM_COLORS = {
     glow: 'rgba(214, 216, 222, 0.18)',
     text: 'Neutral',
   },
+  'slot-1': {
+    primary: '#4fd4ff',
+    secondary: '#0f6cdd',
+    glow: 'rgba(79, 212, 255, 0.28)',
+    text: 'Azure',
+  },
+  'slot-2': {
+    primary: '#ff8a7a',
+    secondary: '#e14d55',
+    glow: 'rgba(255, 138, 122, 0.28)',
+    text: 'Ember',
+  },
+  'slot-3': {
+    primary: '#ffd36f',
+    secondary: '#d6861b',
+    glow: 'rgba(255, 211, 111, 0.26)',
+    text: 'Solar',
+  },
+  'slot-4': {
+    primary: '#7cffd8',
+    secondary: '#14b88e',
+    glow: 'rgba(124, 255, 216, 0.24)',
+    text: 'Mint',
+  },
+  'slot-5': {
+    primary: '#8fb7ff',
+    secondary: '#4268ff',
+    glow: 'rgba(143, 183, 255, 0.26)',
+    text: 'Nova',
+  },
+  'slot-6': {
+    primary: '#ffb46b',
+    secondary: '#ff6d3a',
+    glow: 'rgba(255, 180, 107, 0.26)',
+    text: 'Flare',
+  },
 };
 
 export const BALANCE = {

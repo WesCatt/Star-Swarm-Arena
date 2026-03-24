@@ -3,15 +3,18 @@ import { Vector2 } from './utils.js';
 export class Controls {
   constructor(canvas) {
     this.canvas = canvas;
+    this.mode = 'local';
     this.keys = new Set();
     this.codes = new Set();
     this.touchBoost = {
       blue: false,
       red: false,
+      online: false,
     };
     this.touchState = {
       blue: this.createTouchSlot(),
       red: this.createTouchSlot(),
+      online: this.createTouchSlot(),
     };
     this.bind();
   }
@@ -26,6 +29,16 @@ export class Controls {
       currentY: 0,
       vector: new Vector2(),
     };
+  }
+
+  setMode(mode) {
+    this.mode = mode === 'online' ? 'online' : 'local';
+    this.touchBoost.online = false;
+    this.touchBoost.blue = false;
+    this.touchBoost.red = false;
+    this.touchState.blue = this.createTouchSlot();
+    this.touchState.red = this.createTouchSlot();
+    this.touchState.online = this.createTouchSlot();
   }
 
   bind() {
@@ -46,12 +59,11 @@ export class Controls {
 
     this.bindBoostButton('blue', document.getElementById('blue-boost-button'));
     this.bindBoostButton('red', document.getElementById('red-boost-button'));
+    this.bindBoostButton('online', document.getElementById('online-boost-button'));
   }
 
   bindBoostButton(team, element) {
-    if (!element) {
-      return;
-    }
+    if (!element) return;
 
     const activate = (event) => {
       event.preventDefault();
@@ -72,33 +84,38 @@ export class Controls {
   handleTouchStart(event) {
     event.preventDefault();
     const rect = this.canvas.getBoundingClientRect();
-    const midX = rect.left + rect.width * 0.5;
+    const midpoint = rect.left + rect.width * 0.5;
 
     for (const touch of event.changedTouches) {
-      const side = touch.clientX < midX ? 'blue' : 'red';
-      const slot = this.touchState[side];
-
-      if (slot.active) {
+      if (this.mode === 'online') {
+        if (touch.clientX >= midpoint || this.touchState.online.active) continue;
+        this.activateTouchSlot(this.touchState.online, touch);
         continue;
       }
 
-      slot.active = true;
-      slot.id = touch.identifier;
-      slot.startX = touch.clientX;
-      slot.startY = touch.clientY;
-      slot.currentX = touch.clientX;
-      slot.currentY = touch.clientY;
-      slot.vector.set(0, 0);
+      const side = touch.clientX < midpoint ? 'blue' : 'red';
+      if (this.touchState[side].active) continue;
+      this.activateTouchSlot(this.touchState[side], touch);
     }
+  }
+
+  activateTouchSlot(slot, touch) {
+    slot.active = true;
+    slot.id = touch.identifier;
+    slot.startX = touch.clientX;
+    slot.startY = touch.clientY;
+    slot.currentX = touch.clientX;
+    slot.currentY = touch.clientY;
+    slot.vector.set(0, 0);
   }
 
   handleTouchMove(event) {
     event.preventDefault();
+
     for (const touch of event.changedTouches) {
       const side = this.findTouchSide(touch.identifier);
-      if (!side) {
-        continue;
-      }
+      if (!side) continue;
+
       const slot = this.touchState[side];
       slot.currentX = touch.clientX;
       slot.currentY = touch.clientY;
@@ -115,19 +132,16 @@ export class Controls {
     event.preventDefault();
     for (const touch of event.changedTouches) {
       const side = this.findTouchSide(touch.identifier);
-      if (!side) {
-        continue;
-      }
+      if (!side) continue;
       this.touchState[side] = this.createTouchSlot();
     }
   }
 
   findTouchSide(identifier) {
-    if (this.touchState.blue.id === identifier) {
-      return 'blue';
-    }
-    if (this.touchState.red.id === identifier) {
-      return 'red';
+    for (const side of ['blue', 'red', 'online']) {
+      if (this.touchState[side].id === identifier) {
+        return side;
+      }
     }
     return null;
   }
@@ -156,11 +170,29 @@ export class Controls {
     return vector;
   }
 
+  getOnlineInput() {
+    const vector = new Vector2();
+    if (this.keys.has('w')) vector.y -= 1;
+    if (this.keys.has('s')) vector.y += 1;
+    if (this.keys.has('a')) vector.x -= 1;
+    if (this.keys.has('d')) vector.x += 1;
+
+    vector.x += this.touchState.online.vector.x;
+    vector.y += this.touchState.online.vector.y;
+    if (vector.length() > 1) {
+      vector.normalize();
+    }
+
+    return {
+      x: vector.x,
+      y: vector.y,
+      boost: this.codes.has('Space') || this.touchBoost.online,
+    };
+  }
+
   getJoystickState(team) {
     const slot = this.touchState[team];
-    if (!slot.active) {
-      return null;
-    }
+    if (!slot?.active) return null;
     return {
       startX: slot.startX,
       startY: slot.startY,
@@ -181,7 +213,9 @@ export class Controls {
     this.codes.clear();
     this.touchBoost.blue = false;
     this.touchBoost.red = false;
+    this.touchBoost.online = false;
     this.touchState.blue = this.createTouchSlot();
     this.touchState.red = this.createTouchSlot();
+    this.touchState.online = this.createTouchSlot();
   }
 }
