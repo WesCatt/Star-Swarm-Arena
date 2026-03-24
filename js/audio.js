@@ -1,12 +1,17 @@
 const BGM_TRACK_URL = new URL('../assets/audio/space-bgm.mp3', import.meta.url).href;
+const IMPACT_SHARED_URL = new URL('../assets/audio/impact-shared.mp3', import.meta.url).href;
 
 export class AudioManager {
   constructor() {
     this.ctx = null;
     this.master = null;
     this.musicBus = null;
+    this.sfxBus = null;
     this.track = null;
     this.trackSource = null;
+    this.buffers = new Map();
+    this.loadingBuffers = new Map();
+    this.lastSfxAt = new Map();
     this.started = false;
     this.enabled = true;
     this.scene = 'start';
@@ -41,7 +46,7 @@ export class AudioManager {
     if (!this.button) return;
     this.button.setAttribute('aria-pressed', String(this.enabled));
     this.button.classList.toggle('is-muted', !this.enabled);
-    this.button.textContent = this.enabled ? 'BGM' : 'MUTE';
+    this.button.textContent = this.enabled ? 'AUDIO' : 'MUTE';
   }
 
   async ensureStarted() {
@@ -72,12 +77,81 @@ export class AudioManager {
     this.musicBus.gain.value = 0.0001;
     this.musicBus.connect(this.master);
 
+    this.sfxBus = this.ctx.createGain();
+    this.sfxBus.gain.value = 0.82;
+    this.sfxBus.connect(this.master);
+
     this.track = new Audio(BGM_TRACK_URL);
     this.track.loop = true;
     this.track.preload = 'auto';
 
     this.trackSource = this.ctx.createMediaElementSource(this.track);
     this.trackSource.connect(this.musicBus);
+  }
+
+  async loadBuffer(key, url) {
+    if (!this.ctx) return null;
+    if (this.buffers.has(key)) return this.buffers.get(key);
+    if (this.loadingBuffers.has(key)) return this.loadingBuffers.get(key);
+
+    const pending = fetch(url)
+      .then((response) => response.arrayBuffer())
+      .then((arrayBuffer) => this.ctx.decodeAudioData(arrayBuffer))
+      .then((buffer) => {
+        this.buffers.set(key, buffer);
+        return buffer;
+      })
+      .catch(() => null)
+      .finally(() => {
+        this.loadingBuffers.delete(key);
+      });
+
+    this.loadingBuffers.set(key, pending);
+    return pending;
+  }
+
+  playBuffer(buffer, { gain = 1, playbackRate = 1 } = {}) {
+    if (!this.ctx || !this.sfxBus || !buffer || !this.enabled) return;
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = playbackRate;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = gain;
+
+    source.connect(gainNode);
+    gainNode.connect(this.sfxBus);
+    source.start();
+  }
+
+  canPlaySfx(key, cooldownMs) {
+    const now = performance.now();
+    const lastPlayedAt = this.lastSfxAt.get(key) || 0;
+    if (now - lastPlayedAt < cooldownMs) return false;
+    this.lastSfxAt.set(key, now);
+    return true;
+  }
+
+  async playPlanetImpact() {
+    if (!this.started || !this.enabled) return;
+    if (!this.canPlaySfx('planet-impact', 90)) return;
+    const buffer = await this.loadBuffer('impact-shared', IMPACT_SHARED_URL);
+    if (!buffer) return;
+    this.playBuffer(buffer, {
+      gain: 0.24 + Math.random() * 0.05,
+      playbackRate: 1.14 + Math.random() * 0.14,
+    });
+  }
+
+  async playPlanetShatter() {
+    if (!this.started || !this.enabled) return;
+    const buffer = await this.loadBuffer('impact-shared', IMPACT_SHARED_URL);
+    if (!buffer) return;
+    this.playBuffer(buffer, {
+      gain: 0.88 + Math.random() * 0.08,
+      playbackRate: 0.72 + Math.random() * 0.06,
+    });
   }
 
   setScene(scene) {

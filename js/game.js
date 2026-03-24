@@ -10,9 +10,10 @@ import { UI } from './ui.js';
 import { Vector2, clamp, distance, pick, rand } from './utils.js';
 
 export class Game {
-  constructor(canvas) {
+  constructor(canvas, audio = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.audio = audio;
     this.ui = new UI();
     this.controls = new Controls(canvas);
     this.camera = new Camera();
@@ -30,7 +31,9 @@ export class Game {
     });
 
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', this.resize);
+    window.visualViewport?.addEventListener('resize', this.resize);
+    window.visualViewport?.addEventListener('scroll', this.resize);
 
     this.setupMatch();
   }
@@ -46,10 +49,13 @@ export class Game {
     }));
   }
 
-  resize() {
+  resize = () => {
     const dpr = window.devicePixelRatio || 1;
-    this.viewportWidth = window.innerWidth;
-    this.viewportHeight = window.innerHeight;
+    const viewport = window.visualViewport;
+    const width = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
+    const height = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+    this.viewportWidth = Math.round(width);
+    this.viewportHeight = Math.round(height);
     this.canvas.width = Math.round(this.viewportWidth * dpr);
     this.canvas.height = Math.round(this.viewportHeight * dpr);
     this.canvas.style.width = `${this.viewportWidth}px`;
@@ -66,6 +72,7 @@ export class Game {
     this.particles = [];
     this.delayedEffects = [];
     this.itemAccumulator = 0;
+    this.camera.resetShake();
 
     this.planets = [];
     while (this.planets.length < WORLD.planets) {
@@ -80,12 +87,14 @@ export class Game {
         if (info.willCapture) return;
         const strength = clamp((info.impactHeat - 1.6) * 0.85, 0.28, 3.2);
         const duration = clamp(2.2 + (info.impactHeat - 1) * 0.5, 2.2, 5.4);
-        this.camera.shake(strength, duration);
+        this.camera.shake(strength, duration, { progressive: true });
+        this.audio?.playPlanetImpact();
       };
       planet.onShattered = (capturedPlanet, team) => {
         this.spawnBurst(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, 42, 3.2);
         this.spawnShockwave(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, capturedPlanet.radius * 0.55, 2);
         this.camera.shake(30, 15);
+        this.audio?.playPlanetShatter();
       };
       planet.onCaptured = (capturedPlanet, team) => {
         this.spawnBurst(capturedPlanet.pos.x, capturedPlanet.pos.y, TEAM_COLORS[team].primary, 18, 1.35);
@@ -303,6 +312,7 @@ export class Game {
       if (!collector) return true;
       item.applyEffect(collector, this);
       this.spawnBurst(item.pos.x, item.pos.y, item.type.accent, 16, 1.6);
+      this.ui.showPickupNotice?.(collector.team, item.type);
       return false;
     });
   }

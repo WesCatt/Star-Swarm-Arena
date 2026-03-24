@@ -11,6 +11,7 @@ export class Camera {
     this.posSmooth = 0.1;
     this.shakeTime = 0;
     this.shakeStrength = 0;
+    this.impactShakeMultiplier = 0;
     this.shakeOffset = new Vector2();
   }
 
@@ -35,11 +36,18 @@ export class Camera {
     this.position.x = clamp(this.position.x, halfWidth, WORLD.width - halfWidth);
     this.position.y = clamp(this.position.y, halfHeight, WORLD.height - halfHeight);
 
-    if (this.shakeTime > 0) {
+    this.impactShakeMultiplier = Math.max(0, this.impactShakeMultiplier - 0.03 * tick);
+
+    if (this.shakeTime > 0 || this.shakeStrength > 0.01) {
       this.shakeTime = Math.max(0, this.shakeTime - tick);
-      const intensity = this.shakeStrength * (this.shakeTime / Math.max(this.shakeTime + tick, 0.001));
+      const activeDamping = Math.pow(0.9, tick);
+      const idleDamping = Math.pow(0.62, tick);
+      this.shakeStrength *= this.shakeTime > 0 ? activeDamping : idleDamping;
+      if (this.shakeStrength < 0.01) this.shakeStrength = 0;
+      const intensity = this.shakeStrength;
       this.shakeOffset.set((Math.random() * 2 - 1) * intensity, (Math.random() * 2 - 1) * intensity);
     } else {
+      this.shakeStrength = 0;
       this.shakeOffset.set(0, 0);
     }
   }
@@ -69,8 +77,21 @@ export class Camera {
     };
   }
 
-  shake(strength = 10, duration = 10) {
-    this.shakeStrength = Math.max(this.shakeStrength, strength);
+  shake(strength = 10, duration = 10, { progressive = false } = {}) {
+    let appliedStrength = strength;
+    if (progressive) {
+      this.impactShakeMultiplier = clamp(this.impactShakeMultiplier + 0.18, 0, 1);
+      appliedStrength *= 0.35 + this.impactShakeMultiplier * 0.65;
+    }
+
+    this.shakeStrength = Math.max(this.shakeStrength * 0.72, appliedStrength);
     this.shakeTime = Math.max(this.shakeTime, duration);
+  }
+
+  resetShake() {
+    this.shakeTime = 0;
+    this.shakeStrength = 0;
+    this.impactShakeMultiplier = 0;
+    this.shakeOffset.set(0, 0);
   }
 }

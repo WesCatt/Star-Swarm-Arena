@@ -134,9 +134,16 @@ export class UI {
     this.victorySubtitle = document.getElementById('victory-subtitle');
     this.hudState = document.getElementById('hud-state');
     this.hudTip = document.getElementById('hud-tip');
+    this.pickupNoticeStacks = {
+      blue: document.getElementById('blue-pickup-notices'),
+      red: document.getElementById('red-pickup-notices'),
+    };
     this.currentLanguage = 'en';
     this.lastWinner = null;
     this.dualHold = { blue: false, red: false, progress: 0 };
+    this.pickupNoticeEntries = [];
+    this.pickupNoticeTimers = new Map();
+    this.pickupNoticeSeq = 0;
 
     this.textRefs = {
       html: document.documentElement,
@@ -198,6 +205,96 @@ export class UI {
         <div class="legend-desc">${t.items[item.id]?.description || item.description}</div>
       </article>
     `).join('');
+  }
+
+  getItemText(itemId) {
+    const fallback = ITEM_TYPES.find((item) => item.id === itemId);
+    const translated = TRANSLATIONS[this.currentLanguage].items[itemId];
+    return {
+      name: translated?.name || fallback?.name || itemId,
+      description: translated?.description || fallback?.description || '',
+      accent: fallback?.accent || '#d6d8de',
+      icon: fallback ? getItemIconMarkup(fallback) : '',
+    };
+  }
+
+  getPickupLeadText() {
+    return this.currentLanguage === 'en' ? 'Picked up' : '\u83b7\u5f97\u9053\u5177';
+  }
+
+  clearPickupNoticeForTeam(team) {
+    const removed = this.pickupNoticeEntries.filter((entry) => entry.team === team);
+    for (const entry of removed) {
+      const timer = this.pickupNoticeTimers.get(entry.id);
+      if (timer) {
+        window.clearTimeout(timer);
+        this.pickupNoticeTimers.delete(entry.id);
+      }
+    }
+    this.pickupNoticeEntries = this.pickupNoticeEntries.filter((entry) => entry.team !== team);
+  }
+
+  clearPickupNotices() {
+    for (const timer of this.pickupNoticeTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    this.pickupNoticeTimers.clear();
+    this.pickupNoticeEntries = [];
+    this.renderPickupNotices();
+  }
+
+  removePickupNotice(id) {
+    const timer = this.pickupNoticeTimers.get(id);
+    if (timer) {
+      window.clearTimeout(timer);
+      this.pickupNoticeTimers.delete(id);
+    }
+    this.pickupNoticeEntries = this.pickupNoticeEntries.filter((entry) => entry.id !== id);
+    this.renderPickupNotices();
+  }
+
+  renderPickupNotices() {
+    for (const team of ['blue', 'red']) {
+      const stack = this.pickupNoticeStacks[team];
+      if (!stack) continue;
+      const teamName = TRANSLATIONS[this.currentLanguage].teams[team] || TEAM_COLORS[team].text;
+      const lead = this.getPickupLeadText();
+      stack.innerHTML = this.pickupNoticeEntries
+        .filter((entry) => entry.team === team)
+        .map((entry) => {
+          const itemText = this.getItemText(entry.itemId);
+          return `
+            <article class="pickup-notice-card ${team}" style="--pickup-accent:${entry.accent}">
+              <div class="pickup-notice-icon" aria-hidden="true">${itemText.icon}</div>
+              <div class="pickup-notice-copy">
+                <div class="pickup-notice-kicker">${teamName} · ${lead}</div>
+                <div class="pickup-notice-name">${itemText.name}</div>
+                <div class="pickup-notice-desc">${itemText.description}</div>
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+    }
+  }
+
+  showPickupNotice(team, itemType) {
+    if (!team || !itemType?.id) return;
+
+    this.clearPickupNoticeForTeam(team);
+
+    const entry = {
+      id: `pickup-${this.pickupNoticeSeq += 1}`,
+      team,
+      itemId: itemType.id,
+      accent: itemType.accent,
+    };
+
+    this.pickupNoticeEntries.push(entry);
+    this.renderPickupNotices();
+
+    const timer = window.setTimeout(() => this.removePickupNotice(entry.id), 2200);
+    this.pickupNoticeTimers.set(entry.id, timer);
   }
 
   bindCallbacks(callbacks) {
@@ -275,6 +372,7 @@ export class UI {
     if (this.blueBoostButton) this.blueBoostButton.textContent = t.boost;
     if (this.redBoostButton) this.redBoostButton.textContent = t.boost;
     this.populateLegend();
+    this.renderPickupNotices();
     if (this.lastWinner) {
       this.setVictoryText(this.lastWinner);
     }
@@ -311,6 +409,7 @@ export class UI {
   }
 
   showStart() {
+    this.clearPickupNotices();
     this.setVisualState('start');
     this.hud.classList.add('hidden');
     this.victoryScreen.classList.add('hidden');
@@ -325,6 +424,7 @@ export class UI {
   }
 
   showPlaying() {
+    this.clearPickupNotices();
     this.setVisualState('playing');
     this.startScreen.classList.add('hidden');
     this.victoryScreen.classList.add('hidden');
@@ -332,6 +432,7 @@ export class UI {
   }
 
   showVictory(team) {
+    this.clearPickupNotices();
     this.setVisualState('victory');
     this.hud.classList.remove('hidden');
     this.victoryScreen.classList.remove('hidden');
@@ -352,14 +453,14 @@ export class UI {
       const refs = this.refs[team];
 
       refs.bar.style.width = `${entry.healthRatio * 100}%`;
-      refs.health.textContent = `${Math.ceil(entry.health)} / ${entry.maxHealth}`;
-      refs.drones.textContent = `${entry.drones} / ${entry.cap}`;
+      refs.health.textContent = `${Math.ceil(entry.health)}/${entry.maxHealth}`;
+      refs.drones.textContent = `${entry.drones}/${entry.cap}`;
       refs.planets.textContent = this.currentLanguage === 'en'
         ? `${entry.planets} ${TRANSLATIONS.en.planetsSuffix}`
         : `${entry.planets}${TRANSLATIONS.zh.planetsSuffix}`;
       refs.buffs.innerHTML = entry.buffs.length
         ? entry.buffs.map((buff) => `<span class="buff-pill">${TRANSLATIONS[this.currentLanguage].buffs[buff.type] || buff.label}<small>${padTime(buff.remaining)}</small></span>`).join('')
-        : `<span class="buff-pill">${TRANSLATIONS[this.currentLanguage].noBuffs}</span>`;
+        : '';
     }
 
     this.hudState.textContent = TRANSLATIONS[this.currentLanguage][snapshot.stateKey] || snapshot.stateKey;
