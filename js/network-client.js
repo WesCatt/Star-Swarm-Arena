@@ -2,7 +2,7 @@ import { io } from 'socket.io-client';
 import { ONLINE_SOCKET_PORT } from './online-constants.js';
 
 const SESSION_KEY = 'ssa-online-session-id';
-const DEFAULT_SOCKET_URL = `http://192.168.44.111:${ONLINE_SOCKET_PORT}`;
+const DEFAULT_SOCKET_URL = `http://star-war.westcat.cn`;
 
 function getSessionId() {
   const existing = window.localStorage.getItem(SESSION_KEY);
