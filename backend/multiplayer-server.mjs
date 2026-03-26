@@ -43,7 +43,6 @@ import {
   ONLINE_SLOT_THEMES,
   ONLINE_WORLD,
   getOnlineSpawnPoint,
-  getOnlineTheme,
 } from './shared/online-constants.js';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -76,6 +75,12 @@ let pickupSequence = 1;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function roundTo(value, digits = 1) {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** digits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
 function normalizeAngle(angle) {
@@ -700,25 +705,33 @@ function createDroneState(ownerSlotId, x, y) {
   };
 }
 
-function getDroneCount(room, ownerSlotId) {
-  return room.drones.filter((drone) => drone.ownerSlotId === ownerSlotId && drone.health > 0).length;
+function buildDroneCountIndex(drones) {
+  const counts = new Map();
+  for (const drone of drones) {
+    if (drone.health <= 0) continue;
+    counts.set(drone.ownerSlotId, (counts.get(drone.ownerSlotId) || 0) + 1);
+  }
+  return counts;
 }
 
 function getDroneCap(ship) {
   return ONLINE_DRONE_BASE_CAP + ship.planets * ONLINE_DRONE_PLANET_BONUS;
 }
 
-function spawnDrone(room, ownerSlotId, source) {
+function spawnDrone(room, ownerSlotId, source, droneCounts = null) {
   const sourceRadius = source.radius || ONLINE_SHIP_RADIUS;
   const angle = Math.random() * Math.PI * 2;
   const distance = sourceRadius + 14 + Math.random() * 10;
-  room.drones.push(
-    createDroneState(
-      ownerSlotId,
-      source.x + Math.cos(angle) * distance,
-      source.y + Math.sin(angle) * distance,
-    ),
+  const drone = createDroneState(
+    ownerSlotId,
+    source.x + Math.cos(angle) * distance,
+    source.y + Math.sin(angle) * distance,
   );
+  room.drones.push(drone);
+  if (droneCounts) {
+    droneCounts.set(ownerSlotId, (droneCounts.get(ownerSlotId) || 0) + 1);
+  }
+  return drone;
 }
 
 function canPlanetSupport(planet) {
@@ -1130,34 +1143,35 @@ function updateDroneCaps(room) {
   }
 }
 
-function fillShipDroneSpawns(room) {
+function fillShipDroneSpawns(room, droneCounts) {
   for (const ship of room.ships) {
     if (ship.respawnFrames > 0) continue;
-    const currentCount = getDroneCount(room, ship.slotId);
+    const currentCount = droneCounts.get(ship.slotId) || 0;
     if (currentCount >= ship.droneCap) continue;
     const spawnRate = ONLINE_SHIP_DRONE_SPAWN_RATE / getProductionMultiplier(ship);
     let ready = 0;
 
-    while (ship.spawnAccumulator >= spawnRate && getDroneCount(room, ship.slotId) < ship.droneCap) {
+    while (ship.spawnAccumulator >= spawnRate && (droneCounts.get(ship.slotId) || 0) < ship.droneCap) {
       ship.spawnAccumulator -= spawnRate;
-      spawnDrone(room, ship.slotId, ship);
+      spawnDrone(room, ship.slotId, ship, droneCounts);
       ready += 1;
       if (ready >= 4) break;
     }
   }
 }
 
-function fillPlanetDroneSpawns(room, tick) {
+function fillPlanetDroneSpawns(room, tick, droneCounts) {
+  const shipsBySlot = new Map(room.ships.map((ship) => [ship.slotId, ship]));
   for (const planet of room.planets) {
     if (!canPlanetSupport(planet)) continue;
-    const owner = room.ships.find((ship) => ship.slotId === planet.ownerSlotId);
+    const owner = shipsBySlot.get(planet.ownerSlotId);
     if (!owner || owner.respawnFrames > 0) continue;
-    if (getDroneCount(room, owner.slotId) >= owner.droneCap) continue;
+    if ((droneCounts.get(owner.slotId) || 0) >= owner.droneCap) continue;
 
     planet.supportAccumulator += tick;
-    while (planet.supportAccumulator >= ONLINE_PLANET_DRONE_SPAWN_RATE && getDroneCount(room, owner.slotId) < owner.droneCap) {
+    while (planet.supportAccumulator >= ONLINE_PLANET_DRONE_SPAWN_RATE && (droneCounts.get(owner.slotId) || 0) < owner.droneCap) {
       planet.supportAccumulator -= ONLINE_PLANET_DRONE_SPAWN_RATE;
-      spawnDrone(room, owner.slotId, planet);
+      spawnDrone(room, owner.slotId, planet, droneCounts);
     }
   }
 }
@@ -1355,6 +1369,12 @@ function resolveDroneCollisions(room, tick) {
 
 function updateDrones(room, tick) {
   const activeDrones = room.drones.filter((drone) => drone.health > 0);
+  if (!activeDrones.length) {
+    room.drones = [];
+    return;
+  }
+
+  const shipsBySlot = new Map(room.ships.map((ship) => [ship.slotId, ship]));
   const dronesByOwner = new Map();
   for (const drone of activeDrones) {
     if (!dronesByOwner.has(drone.ownerSlotId)) {
@@ -1363,8 +1383,18 @@ function updateDrones(room, tick) {
     dronesByOwner.get(drone.ownerSlotId).push(drone);
   }
 
+  const enemyDronesByOwner = new Map();
+  for (const ship of room.ships) {
+    const enemies = [];
+    for (const [ownerSlotId, drones] of dronesByOwner.entries()) {
+      if (ownerSlotId === ship.slotId) continue;
+      enemies.push(...drones);
+    }
+    enemyDronesByOwner.set(ship.slotId, enemies);
+  }
+
   for (const drone of activeDrones) {
-    const ownerShip = room.ships.find((ship) => ship.slotId === drone.ownerSlotId);
+    const ownerShip = shipsBySlot.get(drone.ownerSlotId);
     if (!ownerShip || ownerShip.respawnFrames > 0 || ownerShip.health <= 0) {
       drone.health = 0;
       continue;
@@ -1373,7 +1403,7 @@ function updateDrones(room, tick) {
     const modifiers = getDroneModifiers(ownerShip);
     drone.radius = ONLINE_DRONE_RADIUS * modifiers.size;
     const allies = dronesByOwner.get(drone.ownerSlotId) || [];
-    const enemies = activeDrones.filter((candidate) => candidate.ownerSlotId !== drone.ownerSlotId && candidate.health > 0);
+    const enemies = enemyDronesByOwner.get(drone.ownerSlotId) || [];
     const forces = calculateDroneForces(room, drone, ownerShip, allies, enemies);
     const maxSpeed = ONLINE_DRONE_SPEED * modifiers.speed;
 
@@ -1609,8 +1639,9 @@ function stepRoom(room) {
 
   updateSkillEffects(room, tickFactor);
   updateDroneCaps(room);
-  fillShipDroneSpawns(room);
-  fillPlanetDroneSpawns(room, tickFactor);
+  const droneCounts = buildDroneCountIndex(room.drones);
+  fillShipDroneSpawns(room, droneCounts);
+  fillPlanetDroneSpawns(room, tickFactor, droneCounts);
   updateDrones(room, tickFactor);
   resolveShipCollisions(room, tickFactor);
   updateItems(room, tickFactor);
@@ -1620,96 +1651,76 @@ function stepRoom(room) {
 }
 
 function serializeSnapshot(room) {
-  const leaderboard = room.ships
-    .map((ship) => ({
-      slotId: ship.slotId,
-      badge: ship.badge,
-      name: ship.name,
-      isBot: ship.isBot,
-      health: Math.round(ship.health),
-      energy: Math.round(ship.energy),
-      resources: Math.round(ship.resources),
-      planets: ship.planets,
-      eliminations: ship.eliminations,
-      active: ship.respawnFrames <= 0,
-      score: Math.round(ship.score),
-      theme: getOnlineTheme(ship.slotId),
-    }))
-    .sort((a, b) => (b.planets * 100 + b.resources + b.eliminations * 40) - (a.planets * 100 + a.resources + a.eliminations * 40));
-
   return {
     roomId: room.id,
     playerCount: room.playerCount,
     capacity: ONLINE_ROOM_CAPACITY,
-    world: ONLINE_WORLD,
     ships: room.ships.map((ship) => ({
       slotId: ship.slotId,
       badge: ship.badge,
       name: ship.name,
       isBot: ship.isBot,
-      x: ship.x,
-      y: ship.y,
-      vx: ship.vx,
-      vy: ship.vy,
-      angle: ship.angle,
-      radius: ship.radius,
-      health: ship.health,
+      x: roundTo(ship.x),
+      y: roundTo(ship.y),
+      vx: roundTo(ship.vx, 2),
+      vy: roundTo(ship.vy, 2),
+      angle: roundTo(ship.angle, 3),
+      radius: roundTo(ship.radius),
+      health: roundTo(ship.health),
       maxHealth: ship.maxHealth,
-      energy: ship.energy,
+      energy: roundTo(ship.energy),
       maxEnergy: ship.maxEnergy,
-      repairCooldown: ship.repairCooldown,
-      arcCooldown: ship.arcCooldown,
-      arcChargeLevel: ship.arcChargeLevel || 0,
-      arcHoldFrames: ship.arcHoldFrames || 0,
-      repairFlash: ship.repairFlash,
+      repairCooldown: Math.round(ship.repairCooldown),
+      arcCooldown: Math.round(ship.arcCooldown),
+      arcChargeLevel: roundTo(ship.arcChargeLevel || 0, 3),
+      arcHoldFrames: Math.round(ship.arcHoldFrames || 0),
+      repairFlash: Math.round(ship.repairFlash),
       lastDamagedBy: ship.lastDamagedBy,
-      resources: ship.resources,
+      resources: roundTo(ship.resources),
       planets: ship.planets,
       eliminations: ship.eliminations,
-      boostBlend: ship.boostBlend,
-      respawnFrames: ship.respawnFrames,
+      boostBlend: roundTo(ship.boostBlend, 3),
+      respawnFrames: Math.round(ship.respawnFrames),
       buffs: ship.buffs.map((buff) => ({
         type: buff.type,
         remaining: Math.round(buff.remaining),
         total: Math.round(buff.total),
       })),
-      theme: getOnlineTheme(ship.slotId),
     })),
     planets: room.planets.map((planet) => ({
       id: planet.id,
-      x: planet.x,
-      y: planet.y,
-      radius: planet.radius,
-      health: planet.health,
+      x: roundTo(planet.x),
+      y: roundTo(planet.y),
+      radius: roundTo(planet.radius),
+      health: roundTo(planet.health),
       maxHealth: planet.maxHealth,
       ownerSlotId: planet.ownerSlotId,
       pendingOwnerSlotId: planet.pendingOwnerSlotId,
       captureSlotId: planet.captureSlotId,
-      captureProgress: planet.captureProgress,
-      impactHeat: planet.impactHeat,
-      rebuildTimer: planet.rebuildTimer,
+      captureProgress: roundTo(planet.captureProgress, 3),
+      impactHeat: roundTo(planet.impactHeat, 2),
+      rebuildTimer: Math.round(planet.rebuildTimer),
       rebuildDuration: planet.rebuildDuration,
-      revealTimer: planet.revealTimer,
+      revealTimer: Math.round(planet.revealTimer),
       revealDuration: planet.revealDuration,
     })),
     drones: room.drones.map((drone) => ({
       id: drone.id,
       ownerSlotId: drone.ownerSlotId,
-      x: drone.x,
-      y: drone.y,
-      vx: drone.vx,
-      vy: drone.vy,
-      radius: drone.radius,
-      heading: drone.heading,
-      health: drone.health,
+      x: roundTo(drone.x),
+      y: roundTo(drone.y),
+      vx: roundTo(drone.vx, 2),
+      vy: roundTo(drone.vy, 2),
+      radius: roundTo(drone.radius),
+      heading: roundTo(drone.heading, 3),
+      health: roundTo(drone.health),
       maxHealth: drone.maxHealth,
-      theme: getOnlineTheme(drone.ownerSlotId),
     })),
     items: room.items.map((item) => ({
       id: item.id,
-      x: item.x,
-      y: item.y,
-      radius: item.radius,
+      x: roundTo(item.x),
+      y: roundTo(item.y),
+      radius: roundTo(item.radius),
       typeId: item.typeId,
     })),
     pickupEvents: room.pickupEvents.map((event) => ({
@@ -1724,22 +1735,24 @@ function serializeSnapshot(room) {
       ownerSlotId: effect.ownerSlotId,
       targetSlotId: effect.targetSlotId,
       phase: effect.phase,
-      x: effect.x,
-      y: effect.y,
-      dx: effect.dx,
-      dy: effect.dy,
-      length: effect.length,
-      width: effect.width,
-      radius: effect.radius || 0,
-      chargeRatio: effect.chargeRatio || 0,
-      life: effect.life || 0,
-      maxLife: effect.maxLife || 0,
+      x: roundTo(effect.x),
+      y: roundTo(effect.y),
+      dx: roundTo(effect.dx, 3),
+      dy: roundTo(effect.dy, 3),
+      length: roundTo(effect.length),
+      width: roundTo(effect.width),
+      radius: roundTo(effect.radius || 0),
+      chargeRatio: roundTo(effect.chargeRatio || 0, 3),
+      life: Math.round(effect.life || 0),
+      maxLife: Math.round(effect.maxLife || 0),
     })),
-    leaderboard,
   };
 }
 
 function broadcastRoom(io, room) {
+  if (!(io.sockets.adapter.rooms.get(room.id)?.size)) {
+    return;
+  }
   io.to(room.id).emit('match:snapshot', serializeSnapshot(room));
 }
 

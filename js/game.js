@@ -66,6 +66,7 @@ function hexToRgba(color, alpha = 1) {
 const PLANET_IMPACT_FX_COOLDOWN_MS = 180;
 const ONLINE_LOCKED_TARGET_HOLD_FRAMES = 42;
 const ONLINE_LOCKED_TARGET_FADE_FRAMES = 24;
+const ONLINE_INPUT_RESEND_MS = 100;
 
 export class Game {
   constructor(canvas, audio = null) {
@@ -1252,7 +1253,7 @@ export class Game {
       || input.boost !== this.online.lastInput.boost
       || input.repair !== this.online.lastInput.repair
       || input.arc !== this.online.lastInput.arc;
-    if (this.online.client && (changed || this.online.inputTimer > 60)) {
+    if (this.online.client && (changed || this.online.inputTimer > ONLINE_INPUT_RESEND_MS)) {
       this.online.lastInput = { ...input };
       this.online.inputTimer = 0;
       this.online.client.sendInput({
